@@ -28,3 +28,9 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+<!-- AGENT-MEMORY:BEGIN -->
+- Social URL detection/validation lives in `src/lib/platforms.ts` (tested); reuse it for any ingest path.
+- Studies persist in localStorage via `src/lib/studies.ts` for v1; migrate to Lovable Cloud when extraction/AI phases need server data.
+- Routes: `/` studies dashboard, `/estudios/$studyId` ingest + extraction prep. Editorial look: Instrument Serif / Work Sans / JetBrains Mono, tokens in styles.css.
+<!-- AGENT-MEMORY:END -->
