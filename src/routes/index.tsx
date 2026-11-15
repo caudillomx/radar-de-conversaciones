@@ -1,9 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Masthead } from "@/components/kimedia/Masthead";
 import { PlatformMark } from "@/components/kimedia/PlatformMark";
-import { PLATFORMS, parseSocialUrl, splitUrls } from "@/lib/platforms";
-import { createQuickPulse, deleteStudy, kindOf, useStudies } from "@/lib/studies";
+import { PLATFORMS, parseSocialUrl, splitUrls, type Platform } from "@/lib/platforms";
+import { fn, studiesQuery, useListeningMutation } from "@/lib/listening";
 
 export const QUICK_MAX = 2;
 
@@ -22,9 +23,11 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const all = useStudies();
-  const pulses = all.filter((s) => kindOf(s) === "quick").slice(0, 6);
-  const deep = all.filter((s) => kindOf(s) === "deep");
+  const { data: all = [] } = useQuery(studiesQuery());
+  const pulses = all.filter((s) => s.kind === "quick").slice(0, 6);
+  const deep = all.filter((s) => s.kind === "deep");
+  const create = useListeningMutation(fn.createQuickPulse);
+  const del = useListeningMutation(fn.deleteStudy);
   const navigate = useNavigate();
   const [text, setText] = useState("");
   const parsed = useMemo(() => splitUrls(text).map(parseSocialUrl), [text]);
@@ -34,9 +37,10 @@ function Home() {
 
   function go(e: React.FormEvent) {
     e.preventDefault();
-    if (!canGo) return;
-    const s = createQuickPulse(valid.map((p) => ({ url: p.url, platform: p.platform, postId: p.postId })));
-    navigate({ to: "/estudios/$studyId", params: { studyId: s.id } });
+    if (!canGo || create.isPending) return;
+    create.mutate({ items: valid.map((p) => ({ url: p.url, platform: p.platform, postId: p.postId })) }, {
+      onSuccess: (s) => navigate({ to: "/estudios/$studyId", params: { studyId: (s as { id: string }).id } }),
+    });
   }
 
   return (
@@ -52,7 +56,7 @@ function Home() {
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) go(e); }}
                 placeholder="Pega 1 o 2 URLs de Instagram, TikTok, YouTube, Facebook o X…"
                 className="min-h-12 flex-1 resize-none bg-transparent px-3 py-3 font-mono text-sm outline-none" />
-              <button disabled={!canGo} className="bg-accent px-8 py-3 font-medium text-accent-foreground disabled:opacity-40">⚡ Escuchar ahora</button>
+              <button disabled={!canGo || create.isPending} className="bg-accent px-8 py-3 font-medium text-accent-foreground disabled:opacity-40">{create.isPending ? "Abriendo…" : "⚡ Escuchar ahora"}</button>
             </div>
             {parsed.length > 0 && (
               <ul className="mt-3 space-y-1.5">
@@ -70,6 +74,7 @@ function Home() {
                 La Escucha Rápida admite hasta {QUICK_MAX} URLs. Para más, <Link to="/estudios" className="underline">abre un Estudio Profundo</Link>.
               </p>
             )}
+            {create.error && <p className="mt-3 text-sm text-destructive">{create.error.message}</p>}
             <p className="mt-3 font-mono text-xs text-muted-foreground">Sin formularios: entras directo a la lectura exprés.</p>
           </form>
         </section>
@@ -83,9 +88,9 @@ function Home() {
               <ul className="mt-4 divide-y divide-border border-y border-foreground">
                 {pulses.map((s) => (
                   <li key={s.id} className="flex items-center gap-3 py-4">
-                    <div className="flex -space-x-2">{s.sources.map((x) => <PlatformMark key={x.id} platform={x.platform} className="bg-background" />)}</div>
+                    <div className="flex -space-x-2">{s.sources.map((x) => <PlatformMark key={x.id} platform={x.platform as Platform} className="bg-background" />)}</div>
                     <Link to="/estudios/$studyId" params={{ studyId: s.id }} className="min-w-0 flex-1 truncate hover:text-accent">{s.title}</Link>
-                    <button onClick={() => deleteStudy(s.id)} className="font-mono text-xs uppercase text-muted-foreground hover:text-destructive">Quitar</button>
+                    <button onClick={() => del.mutate({ id: s.id })} className="font-mono text-xs uppercase text-muted-foreground hover:text-destructive">Quitar</button>
                   </li>
                 ))}
               </ul>

@@ -14,7 +14,151 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      comments: {
+        Row: {
+          author: string | null
+          created_at: string
+          external_id: string | null
+          id: string
+          is_reply: boolean
+          likes: number
+          parent_external_id: string | null
+          published_at: string | null
+          raw: Json | null
+          source_id: string
+          text: string
+          url: string | null
+        }
+        Insert: {
+          author?: string | null
+          created_at?: string
+          external_id?: string | null
+          id?: string
+          is_reply?: boolean
+          likes?: number
+          parent_external_id?: string | null
+          published_at?: string | null
+          raw?: Json | null
+          source_id: string
+          text: string
+          url?: string | null
+        }
+        Update: {
+          author?: string | null
+          created_at?: string
+          external_id?: string | null
+          id?: string
+          is_reply?: boolean
+          likes?: number
+          parent_external_id?: string | null
+          published_at?: string | null
+          raw?: Json | null
+          source_id?: string
+          text?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comments_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sources: {
+        Row: {
+          apify_dataset_id: string | null
+          apify_run_id: string | null
+          comment_count: number
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          include_replies: boolean
+          max_comments: number
+          platform: string
+          post_id: string | null
+          started_at: string | null
+          status: string
+          study_id: string
+          url: string
+        }
+        Insert: {
+          apify_dataset_id?: string | null
+          apify_run_id?: string | null
+          comment_count?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          include_replies?: boolean
+          max_comments?: number
+          platform: string
+          post_id?: string | null
+          started_at?: string | null
+          status?: string
+          study_id: string
+          url: string
+        }
+        Update: {
+          apify_dataset_id?: string | null
+          apify_run_id?: string | null
+          comment_count?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          include_replies?: boolean
+          max_comments?: number
+          platform?: string
+          post_id?: string | null
+          started_at?: string | null
+          status?: string
+          study_id?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sources_study_id_fkey"
+            columns: ["study_id"]
+            isOneToOne: false
+            referencedRelation: "studies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      studies: {
+        Row: {
+          client: string | null
+          created_at: string
+          id: string
+          kind: string
+          title: string
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          client?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          title: string
+          topic?: string
+          updated_at?: string
+        }
+        Update: {
+          client?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          title?: string
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

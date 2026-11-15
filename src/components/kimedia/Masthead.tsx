@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 const nav = "font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground";
 const active = { className: "text-foreground underline decoration-accent decoration-2 underline-offset-8" };
 
-export function Masthead({ mode }: { mode?: "quick" | "deep" } = {}) {
+export function Masthead({ mode }: { mode?: "quick" | "deep" | undefined } = {}) {
   return (
     <header className="border-b border-foreground">
       <div className="mx-auto flex max-w-7xl flex-wrap items-end justify-between gap-4 px-6 py-5">

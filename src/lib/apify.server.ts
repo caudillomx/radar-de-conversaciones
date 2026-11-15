@@ -1,0 +1,97 @@
+import type { Platform } from "./platforms";
+
+const GATEWAY = "https://connector-gateway.lovable.dev/apify";
+
+function headers() {
+  const lovable = process.env["LOVABLE_API_KEY"];
+  const apify = process.env["APIFY_API_KEY"];
+  if (!lovable) throw new Error("LOVABLE_API_KEY no está configurada");
+  if (!apify) throw new Error("La conexión de Apify no está vinculada");
+  return { Authorization: `Bearer ${lovable}`, "X-Connection-Api-Key": apify, "Content-Type": "application/json" };
+}
+
+async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${GATEWAY}${path}`, { ...init, headers: { ...headers(), ...(init.headers ?? {}) } });
+  if (!res.ok) {
+    const body = await res.text();
+    console.error(`Apify ${path} [${res.status}]: ${body}`);
+    const msg = safeMsg(body);
+    throw new Error(res.status === 402 ? `Apify sin saldo o plan insuficiente: ${msg}` : res.status === 429 ? "Apify: límite de peticiones alcanzado, intenta en un momento" : `Apify [${res.status}]: ${msg}`);
+  }
+  return res.json() as Promise<T>;
+}
+function safeMsg(body: string) {
+  try { return JSON.parse(body)?.error?.message ?? body.slice(0, 200); } catch { return body.slice(0, 200); }
+}
+
+/** Specialized Actor per platform. */
+export const ACTORS: Record<Platform, string> = {
+  youtube: "streamers~youtube-comments-scraper",
+  tiktok: "clockworks~tiktok-comments-scraper",
+  instagram: "apify~instagram-comment-scraper",
+  facebook: "apify~facebook-comments-scraper",
+  x: "apidojo~tweet-scraper",
+};
+
+export function buildInput(p: Platform, url: string, postId: string | null, max: number, replies: boolean) {
+  switch (p) {
+    case "youtube": return { startUrls: [{ url }], maxComments: max };
+    case "tiktok": return { postURLs: [url], commentsPerPost: max, maxRepliesPerComment: replies ? 10 : 0 };
+    case "instagram": return { directUrls: [url], resultsLimit: max, includeNestedComments: replies };
+    case "facebook": return { startUrls: [{ url }], resultsLimit: max, includeNestedComments: replies };
+    case "x": return { searchTerms: [`conversation_id:${postId}`], maxItems: max, sort: "Latest" };
+  }
+}
+
+type Run = { id: string; status: string; defaultDatasetId: string; statusMessage?: string };
+
+export async function startRun(p: Platform, input: unknown, max: number) {
+  const { data } = await call<{ data: Run }>(`/acts/${ACTORS[p]}/runs?maxItems=${max + 50}`, { method: "POST", body: JSON.stringify(input) });
+  return data;
+}
+export async function getRun(runId: string) {
+  return (await call<{ data: Run }>(`/actor-runs/${runId}`)).data;
+}
+export async function getItems(datasetId: string, limit: number) {
+  return call<Record<string, unknown>[]>(`/datasets/${datasetId}/items?clean=true&limit=${limit}`);
+}
+
+export type NormalizedComment = {
+  external_id: string | null; author: string | null; text: string; published_at: string | null;
+  likes: number; url: string | null; is_reply: boolean; parent_external_id: string | null;
+};
+
+const pick = (o: Record<string, any>, ...keys: string[]) => {
+  for (const k of keys) {
+    const v = k.split(".").reduce<any>((a, s) => (a == null ? a : a[s]), o);
+    if (v !== undefined && v !== null && v !== "") return v;
+  }
+  return null;
+};
+const toDate = (v: unknown) => {
+  if (v == null) return null;
+  const d = typeof v === "number" ? new Date(v < 1e12 ? v * 1000 : v) : new Date(String(v));
+  return isNaN(d.getTime()) ? null : d.toISOString();
+};
+
+export function normalize(p: Platform, item: Record<string, any>, sourcePostId: string | null): NormalizedComment | null {
+  const text = pick(item, "text", "comment", "content", "fullText", "commentText");
+  if (!text || typeof text !== "string") return null;
+  const id = pick(item, "cid", "id", "commentId", "comment_id");
+  let parent = pick(item, "repliesToId", "replyToCid", "parentId", "parentCommentId", "inReplyToId", "replyToId");
+  let isReply = !!parent || item["type"] === "reply" || (typeof item["threadingDepth"] === "number" && item["threadingDepth"] > 0);
+  if (p === "x") {
+    if (String(id) === String(sourcePostId)) return null; // the original tweet itself
+    isReply = true; parent = parent ?? sourcePostId;
+  }
+  return {
+    external_id: id != null ? String(id) : null,
+    author: pick(item, "author.userName", "author.name", "uniqueId", "ownerUsername", "profileName", "author", "user.uniqueId", "authorName"),
+    text,
+    published_at: toDate(pick(item, "createTimeISO", "createdAt", "timestamp", "date", "publishedAt", "createTime")),
+    likes: Number(pick(item, "likeCount", "diggCount", "likesCount", "voteCount", "likes") ?? 0) || 0,
+    url: pick(item, "commentUrl", "url", "twitterUrl"),
+    is_reply: isReply,
+    parent_external_id: parent != null ? String(parent) : null,
+  };
+}

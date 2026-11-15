@@ -31,6 +31,7 @@ use the editor.
 
 <!-- AGENT-MEMORY:BEGIN -->
 - Social URL detection/validation lives in `src/lib/platforms.ts` (tested); reuse it for any ingest path.
-- Studies persist in localStorage via `src/lib/studies.ts` for v1; migrate to Lovable Cloud when extraction/AI phases need server data.
+- Data lives in Lovable Cloud (studies, sources, comments); all access goes through server functions in `src/lib/listening.functions.ts` using the admin client (no auth yet, tables have no anon/authenticated grants). Client hooks/query keys in `src/lib/listening.ts`.
+- Apify: one specialized Actor per platform in `src/lib/apify.server.ts` (gateway). Extraction is async: startExtraction starts runs, the page polls syncExtraction which ingests the dataset when the run succeeds — avoids long server requests.
 - Routes: `/` Quick Pulse bar + chooser, `/estudios` deep studies list, `/estudios/$studyId` detail for both kinds (Study.kind quick|deep, missing = deep). Editorial look: Instrument Serif / Work Sans / JetBrains Mono, tokens in styles.css.
 <!-- AGENT-MEMORY:END -->
