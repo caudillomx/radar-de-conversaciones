@@ -4,7 +4,7 @@ import { useHydrated } from "@tanstack/react-router";
 import { Masthead } from "@/components/kimedia/Masthead";
 import { PlatformMark } from "@/components/kimedia/PlatformMark";
 import { PLATFORMS, parseSocialUrl, splitUrls, type Platform } from "@/lib/platforms";
-import { addSources, removeSource, updateSource, useStudy, type Source } from "@/lib/studies";
+import { addSources, kindOf, removeSource, updateSource, useStudy, type Source } from "@/lib/studies";
 
 export const Route = createFileRoute("/estudios/$studyId")({
   head: () => ({
@@ -44,27 +44,38 @@ function StudyPage() {
     </div>
   );
 
+  const quick = kindOf(study) === "quick";
+  const quickFull = quick && study.sources.length >= 2;
   const sources = study.sources.filter((s) => filter === "all" || s.platform === filter);
   const counts = (Object.keys(PLATFORMS) as Platform[]).map((p) => [p, study.sources.filter((s) => s.platform === p).length] as const);
   const readyCount = study.sources.filter((s) => s.status === "lista").length;
   const estComments = study.sources.filter((s) => s.status === "lista").reduce((n, s) => n + s.maxComments, 0);
 
   function commit() {
-    addSources(study!.id, newValid.map((p) => p.ok ? { url: p.url, platform: p.platform, postId: p.postId } : null!).filter(Boolean));
+    addSources(study!.id, (kindOf(study!) === "quick" ? newValid.slice(0, Math.max(0, 2 - study!.sources.length)) : newValid).map((p) => p.ok ? { url: p.url, platform: p.platform, postId: p.postId } : null!).filter(Boolean));
     setText("");
   }
 
   return (
     <div className="min-h-screen">
-      <Masthead />
+      <Masthead mode={quick ? "quick" : "deep"} />
       <main className="mx-auto max-w-7xl px-6 py-10">
-        <Link to="/" className="font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-accent">← Estudios</Link>
+        {quick ? <Link to="/" className="font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-accent">← Escucha Rápida</Link>
+          : <Link to="/estudios" className="font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-accent">← Estudios Profundos</Link>}
+        <p className="mt-4 font-mono text-xs uppercase tracking-[0.2em] text-accent">{quick ? "⚡ Quick Pulse · Lectura exprés" : "Deep Dive"}</p>
         <h1 className="mt-3 font-display text-5xl md:text-7xl">{study.title}</h1>
         <p className="mt-2 text-muted-foreground">{[study.topic, study.client].filter(Boolean).join(" · ")}</p>
 
         <div className="mt-10 grid gap-10 lg:grid-cols-[1fr_22rem]">
           <div>
-            <section className="border border-foreground bg-card p-6">
+            {quick && (
+              <section className="mb-10 border-2 border-accent bg-card p-6">
+                <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-accent">Alerta rápida</h2>
+                <p className="mt-3 font-display text-3xl">La lectura exprés — sentimiento dominante, narrativa principal, cita clave y un hook listo para postear — aparecerá aquí.</p>
+                <p className="mt-2 text-sm text-muted-foreground">Se generará automáticamente al conectar la extracción con Apify y el análisis con IA.</p>
+              </section>
+            )}
+            {!quickFull && <section className="border border-foreground bg-card p-6">
               <h2 className="font-mono text-xs uppercase tracking-[0.2em]">01 — Ingesta de URLs</h2>
               <textarea value={text} onChange={(e) => setText(e.target.value)} rows={5}
                 placeholder={"Pega una o varias URLs (una por línea)\nhttps://www.instagram.com/reel/…\nhttps://www.tiktok.com/@cuenta/video/…"}
@@ -84,9 +95,9 @@ function StudyPage() {
               )}
               <div className="mt-4 flex items-center justify-between">
                 <span className="font-mono text-xs text-muted-foreground">{newValid.length} nuevas válidas · {parsed.length - valid.length} inválidas</span>
-                <button onClick={commit} disabled={!newValid.length} className="bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-accent disabled:opacity-40">Agregar {newValid.length || ""} al estudio</button>
+                <button onClick={commit} disabled={!newValid.length} className="bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-accent disabled:opacity-40">Agregar {newValid.length || ""} al {quick ? "pulso" : "estudio"}</button>
               </div>
-            </section>
+            </section>}
 
             <section className="mt-10">
               <div className="flex flex-wrap items-center gap-2 border-b border-foreground pb-3">
@@ -105,7 +116,7 @@ function StudyPage() {
           </div>
 
           <aside className="h-fit border border-foreground p-6 lg:sticky lg:top-6">
-            <h2 className="font-mono text-xs uppercase tracking-[0.2em]">02 — Preparación de extracción</h2>
+            <h2 className="font-mono text-xs uppercase tracking-[0.2em]">{quick ? "Extracción exprés" : "02 — Preparación de extracción"}</h2>
             <p className="mt-4 font-display text-6xl">{readyCount}<span className="text-2xl text-muted-foreground"> / {study.sources.length}</span></p>
             <p className="text-sm text-muted-foreground">fuentes marcadas como listas</p>
             <dl className="mt-6 space-y-2 border-t border-border pt-4 text-sm">

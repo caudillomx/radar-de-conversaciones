@@ -6,8 +6,9 @@ export type Source = {
   id: string; url: string; platform: Platform; postId: string | null;
   addedAt: string; status: SourceStatus; maxComments: number; includeReplies: boolean; note?: string;
 };
+export type StudyKind = "quick" | "deep";
 export type Study = {
-  id: string; title: string; topic: string; client?: string | undefined;
+  id: string; kind?: StudyKind; title: string; topic: string; client?: string | undefined;
   createdAt: string; updatedAt: string; sources: Source[];
 };
 
@@ -37,8 +38,8 @@ export function useStudies() {
 export function useStudy(id: string) {
   return useStudies().find((s) => s.id === id);
 }
-export function createStudy(data: { title: string; topic: string; client?: string | undefined }) {
-  const s: Study = { id: uid(), ...data, createdAt: now(), updatedAt: now(), sources: [] };
+export function createStudy(data: { title: string; topic: string; client?: string | undefined; kind?: StudyKind }) {
+  const s: Study = { id: uid(), kind: "deep", ...data, createdAt: now(), updatedAt: now(), sources: [] };
   write([s, ...read()]);
   return s;
 }
@@ -60,4 +61,14 @@ export function updateSource(id: string, sid: string, p: Partial<Source>) {
 }
 export function removeSource(id: string, sid: string) {
   patch(id, (s) => ({ ...s, sources: s.sources.filter((x) => x.id !== sid) }));
+}
+
+export const kindOf = (s: Study): StudyKind => s.kind ?? "deep";
+
+/** Quick Pulse: no form, 1–2 URLs, auto-titled, ready immediately. */
+export function createQuickPulse(items: { url: string; platform: Platform; postId: string | null }[]) {
+  const s = createStudy({ title: `Pulso · ${new Date().toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`, topic: "", kind: "quick" });
+  addSources(s.id, items);
+  read().find((x) => x.id === s.id)!.sources.forEach((src) => updateSource(s.id, src.id, { status: "lista", maxComments: 250 }));
+  return s;
 }

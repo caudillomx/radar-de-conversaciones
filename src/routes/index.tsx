@@ -1,36 +1,41 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Masthead } from "@/components/kimedia/Masthead";
 import { PlatformMark } from "@/components/kimedia/PlatformMark";
-import { createStudy, deleteStudy, useStudies } from "@/lib/studies";
-import type { Platform } from "@/lib/platforms";
+import { PLATFORMS, parseSocialUrl, splitUrls } from "@/lib/platforms";
+import { createQuickPulse, deleteStudy, kindOf, useStudies } from "@/lib/studies";
+
+export const QUICK_MAX = 2;
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Estudios — KiMedia Listening Lab" },
-      { name: "description", content: "Dashboard de estudios de social listening y tendencias de KiMedia Digital." },
-      { property: "og:title", content: "Estudios — KiMedia Listening Lab" },
-      { property: "og:description", content: "Dashboard de estudios de social listening y tendencias de KiMedia Digital." },
+      { title: "Escucha Rápida — KiMedia Listening Lab" },
+      { name: "description", content: "Pega 1 o 2 URLs y obtén una lectura exprés de la conversación, o abre un Estudio Profundo." },
+      { property: "og:title", content: "Escucha Rápida — KiMedia Listening Lab" },
+      { property: "og:description", content: "Lectura exprés de la conversación social o estudios profundos multi-plataforma." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: Dashboard,
+  component: Home,
 });
 
-function Dashboard() {
-  const studies = useStudies();
+function Home() {
+  const all = useStudies();
+  const pulses = all.filter((s) => kindOf(s) === "quick").slice(0, 6);
+  const deep = all.filter((s) => kindOf(s) === "deep");
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: "", topic: "", client: "" });
-  const totalSources = studies.reduce((n, s) => n + s.sources.length, 0);
-  const ready = studies.reduce((n, s) => n + s.sources.filter((x) => x.status === "lista").length, 0);
+  const [text, setText] = useState("");
+  const parsed = useMemo(() => splitUrls(text).map(parseSocialUrl), [text]);
+  const valid = parsed.flatMap((p) => (p.ok ? [p] : []));
+  const tooMany = valid.length > QUICK_MAX;
+  const canGo = valid.length > 0 && !tooMany;
 
-  function submit(e: React.FormEvent) {
+  function go(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.title.trim()) return;
-    const s = createStudy({ title: form.title.trim(), topic: form.topic.trim(), client: form.client.trim() || undefined });
+    if (!canGo) return;
+    const s = createQuickPulse(valid.map((p) => ({ url: p.url, platform: p.platform, postId: p.postId })));
     navigate({ to: "/estudios/$studyId", params: { studyId: s.id } });
   }
 
@@ -38,76 +43,64 @@ function Dashboard() {
     <div className="min-h-screen">
       <Masthead />
       <main className="mx-auto max-w-7xl px-6 py-12">
-        <section className="grid gap-8 border-b border-foreground pb-10 md:grid-cols-[2fr_1fr]">
-          <div>
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">Edición · {new Date().toLocaleDateString("es-MX", { month: "long", year: "numeric" })}</p>
-            <h1 className="mt-3 font-display text-6xl leading-[0.95] md:text-8xl">Lo que la gente <em className="text-accent">realmente</em> dice.</h1>
-            <p className="mt-5 max-w-xl text-lg text-muted-foreground">Organiza publicaciones por estudio, extrae la conversación y conviértela en insights, reportes y contenido de autoridad.</p>
-          </div>
-          <dl className="grid grid-cols-3 gap-4 self-end md:grid-cols-1">
-            {[["Estudios", studies.length], ["Fuentes", totalSources], ["Listas para extraer", ready]].map(([k, v]) => (
-              <div key={k} className="border-t border-foreground pt-2">
-                <dt className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">{k}</dt>
-                <dd className="font-display text-5xl">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-
-        <section className="mt-10">
-          <div className="flex items-baseline justify-between">
-            <h2 className="font-display text-4xl">Estudios</h2>
-            <button onClick={() => setOpen((o) => !o)} className="bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-accent">
-              {open ? "Cancelar" : "+ Nuevo estudio"}
-            </button>
-          </div>
-
-          {open && (
-            <form onSubmit={submit} className="mt-6 grid gap-4 border border-foreground bg-card p-6 md:grid-cols-3">
-              <Field label="Título del estudio *" value={form.title} onChange={(v) => setForm({ ...form, title: v })} placeholder="Reforma judicial: reacción digital" autoFocus />
-              <Field label="Tema / coyuntura" value={form.topic} onChange={(v) => setForm({ ...form, topic: v })} placeholder="Política nacional" />
-              <Field label="Cliente o prospecto" value={form.client} onChange={(v) => setForm({ ...form, client: v })} placeholder="Opcional" />
-              <div className="md:col-span-3">
-                <button className="bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-40" disabled={!form.title.trim()}>Crear y agregar URLs →</button>
-              </div>
-            </form>
-          )}
-
-          {studies.length === 0 ? (
-            <div className="mt-8 border border-dashed border-border p-16 text-center">
-              <p className="font-display text-3xl italic">Aún no hay estudios.</p>
-              <p className="mt-2 text-muted-foreground">Crea el primero para empezar a reunir publicaciones.</p>
+        <section className="border-b border-foreground pb-12">
+          <p className="font-mono text-xs uppercase tracking-[0.2em] text-accent">Nivel Fast · Quick Pulse</p>
+          <h1 className="mt-3 font-display text-6xl leading-[0.95] md:text-8xl">¿Qué está diciendo <em className="text-accent">la gente</em> ahora?</h1>
+          <form onSubmit={go} className="mt-8">
+            <div className="flex flex-col gap-3 border-2 border-foreground bg-card p-2 md:flex-row">
+              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={1} autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) go(e); }}
+                placeholder="Pega 1 o 2 URLs de Instagram, TikTok, YouTube, Facebook o X…"
+                className="min-h-12 flex-1 resize-none bg-transparent px-3 py-3 font-mono text-sm outline-none" />
+              <button disabled={!canGo} className="bg-accent px-8 py-3 font-medium text-accent-foreground disabled:opacity-40">⚡ Escuchar ahora</button>
             </div>
-          ) : (
-            <ul className="mt-8 divide-y divide-border border-y border-foreground">
-              {studies.map((s, i) => {
-                const platforms = [...new Set(s.sources.map((x) => x.platform))] as Platform[];
-                return (
-                  <li key={s.id} className="group grid items-center gap-4 py-6 md:grid-cols-[3rem_1fr_auto_auto_auto]">
-                    <span className="font-mono text-sm text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
-                    <Link to="/estudios/$studyId" params={{ studyId: s.id }} className="min-w-0">
-                      <h3 className="font-display text-3xl group-hover:text-accent">{s.title}</h3>
-                      <p className="text-sm text-muted-foreground">{[s.topic, s.client].filter(Boolean).join(" · ") || "Sin tema"}</p>
-                    </Link>
-                    <div className="flex -space-x-2">{platforms.map((p) => <PlatformMark key={p} platform={p} className="bg-background" />)}</div>
-                    <span className="font-mono text-sm">{s.sources.length} fuentes</span>
-                    <button onClick={() => confirm(`¿Eliminar "${s.title}"?`) && deleteStudy(s.id)} className="font-mono text-xs uppercase text-muted-foreground hover:text-destructive">Eliminar</button>
+            {parsed.length > 0 && (
+              <ul className="mt-3 space-y-1.5">
+                {parsed.map((p, i) => (
+                  <li key={i} className="flex items-center gap-3 text-sm">
+                    {p.ok ? <PlatformMark platform={p.platform} className="h-6 w-6 text-[9px]" /> : <span className="w-6 text-center text-destructive">!</span>}
+                    <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{p.ok ? p.url : p.input}</span>
+                    <span className={p.ok ? "text-success" : "text-destructive"}>{p.ok ? PLATFORMS[p.platform].label : p.reason}</span>
                   </li>
-                );
-              })}
-            </ul>
-          )}
+                ))}
+              </ul>
+            )}
+            {tooMany && (
+              <p className="mt-3 text-sm text-destructive">
+                La Escucha Rápida admite hasta {QUICK_MAX} URLs. Para más, <Link to="/estudios" className="underline">abre un Estudio Profundo</Link>.
+              </p>
+            )}
+            <p className="mt-3 font-mono text-xs text-muted-foreground">Sin formularios: entras directo a la lectura exprés.</p>
+          </form>
         </section>
+
+        <div className="mt-12 grid gap-12 md:grid-cols-2">
+          <section>
+            <h2 className="font-display text-3xl">Pulsos recientes</h2>
+            {pulses.length === 0 ? (
+              <p className="mt-4 text-muted-foreground">Tus escuchas rápidas aparecerán aquí.</p>
+            ) : (
+              <ul className="mt-4 divide-y divide-border border-y border-foreground">
+                {pulses.map((s) => (
+                  <li key={s.id} className="flex items-center gap-3 py-4">
+                    <div className="flex -space-x-2">{s.sources.map((x) => <PlatformMark key={x.id} platform={x.platform} className="bg-background" />)}</div>
+                    <Link to="/estudios/$studyId" params={{ studyId: s.id }} className="min-w-0 flex-1 truncate hover:text-accent">{s.title}</Link>
+                    <button onClick={() => deleteStudy(s.id)} className="font-mono text-xs uppercase text-muted-foreground hover:text-destructive">Quitar</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="border border-foreground p-8">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">Nivel Deep Dive</p>
+            <h2 className="mt-2 font-display text-5xl">Estudio Profundo</h2>
+            <p className="mt-3 text-muted-foreground">Múltiples URLs y redes agrupadas por tema, cliente o campaña. Rigor metodológico, presentación, reporte PDF y Social Lead Pack.</p>
+            <p className="mt-6 font-mono text-sm">{deep.length} estudios activos</p>
+            <Link to="/estudios" className="mt-4 inline-block bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-accent">Abrir o crear estudio →</Link>
+          </section>
+        </div>
       </main>
     </div>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, autoFocus }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; autoFocus?: boolean }) {
-  return (
-    <label className="block">
-      <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">{label}</span>
-      <input autoFocus={autoFocus} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="mt-1 w-full border-b border-foreground bg-transparent py-2 text-lg outline-none focus:border-accent" />
-    </label>
   );
 }

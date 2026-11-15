@@ -32,5 +32,5 @@ use the editor.
 <!-- AGENT-MEMORY:BEGIN -->
 - Social URL detection/validation lives in `src/lib/platforms.ts` (tested); reuse it for any ingest path.
 - Studies persist in localStorage via `src/lib/studies.ts` for v1; migrate to Lovable Cloud when extraction/AI phases need server data.
-- Routes: `/` studies dashboard, `/estudios/$studyId` ingest + extraction prep. Editorial look: Instrument Serif / Work Sans / JetBrains Mono, tokens in styles.css.
+- Routes: `/` Quick Pulse bar + chooser, `/estudios` deep studies list, `/estudios/$studyId` detail for both kinds (Study.kind quick|deep, missing = deep). Editorial look: Instrument Serif / Work Sans / JetBrains Mono, tokens in styles.css.
 <!-- AGENT-MEMORY:END -->
