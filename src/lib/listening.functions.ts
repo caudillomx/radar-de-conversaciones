@@ -136,3 +136,57 @@ export const listComments = createServerFn({ method: "GET" })
     if (r.error) throw new Error(r.error.message);
     return { rows: r.data, total: r.count ?? 0 };
   });
+
+/* ---------- AI analysis ---------- */
+
+const MAX_FOR_AI = 400;
+
+export const getLatestAnalysis = createServerFn({ method: "GET" })
+  .inputValidator((d) => z.object({ studyId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const s = await db();
+    const r = await s.from("analyses").select("*").eq("study_id", data.studyId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (r.error) throw new Error(r.error.message);
+    return r.data;
+  });
+
+export const analyzeStudy = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ studyId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const { runAnalysis, ANALYSIS_MODEL } = await import("./ai/analysis.server");
+    const s = await db();
+    const study = must(await s.from("studies").select("title, topic").eq("id", data.studyId).single());
+    const busy = await s.from("analyses").select("id").eq("study_id", data.studyId).eq("status", "procesando").gt("created_at", new Date(Date.now() - 10 * 60_000).toISOString()).limit(1);
+    if (busy.data?.length) throw new Error("Ya hay un análisis en curso para este estudio.");
+    const cr = await s.from("comments").select("author, text, likes, is_reply, url, published_at, sources!inner(study_id, platform)")
+      .eq("sources.study_id", data.studyId).order("likes", { ascending: false }).limit(MAX_FOR_AI);
+    if (cr.error) throw new Error(cr.error.message);
+    const comments = cr.data;
+    if (comments.length < 5) throw new Error("Se necesitan al menos 5 comentarios extraídos para analizar.");
+    const total = (await s.from("comments").select("id, sources!inner(study_id)", { count: "exact", head: true }).eq("sources.study_id", data.studyId)).count ?? comments.length;
+
+    const row = must(await s.from("analyses").insert({ study_id: data.studyId, model: ANALYSIS_MODEL, comment_count: comments.length }).select("id").single());
+    try {
+      const lines = comments.map((c, i) => `[${i}] (${c.sources.platform}${c.is_reply ? ", respuesta" : ""}, ${c.likes} likes) ${c.text.replace(/\s+/g, " ").slice(0, 400)}`).join("\n");
+      const out = await runAnalysis({ studyTitle: study.title, topic: study.topic, comments: lines });
+      const quote = (i: number | null) => {
+        const c = i != null ? comments[i] : undefined;
+        return c ? { text: c.text, author: c.author, likes: c.likes, platform: c.sources.platform, url: c.url, is_reply: c.is_reply } : null;
+      };
+      const result = {
+        ...out,
+        total_comments: total,
+        analyzed_comments: comments.length,
+        narratives: out.narratives.map((n) => ({ ...n, examples: n.example_ids.map(quote).filter(Boolean) })),
+        archetypes: out.archetypes.map((a) => ({ ...a, example: quote(a.example_id) })),
+        verbatims: out.verbatims.flatMap((v) => { const q = quote(v.id); return q ? [{ ...q, why: v.why }] : []; }).sort((a, b) => b.likes - a.likes),
+      };
+      chk(await s.from("analyses").update({ status: "completado", result: result as never, finished_at: new Date().toISOString() }).eq("id", row.id));
+      return { id: row.id };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Error desconocido";
+      console.error("analyzeStudy", e);
+      await s.from("analyses").update({ status: "error", error: msg, finished_at: new Date().toISOString() }).eq("id", row.id);
+      throw new Error(msg);
+    }
+  });

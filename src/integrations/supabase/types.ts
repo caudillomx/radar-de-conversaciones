@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      analyses: {
+        Row: {
+          comment_count: number
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          model: string | null
+          result: Json | null
+          status: string
+          study_id: string
+        }
+        Insert: {
+          comment_count?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          model?: string | null
+          result?: Json | null
+          status?: string
+          study_id: string
+        }
+        Update: {
+          comment_count?: number
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          model?: string | null
+          result?: Json | null
+          status?: string
+          study_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analyses_study_id_fkey"
+            columns: ["study_id"]
+            isOneToOne: false
+            referencedRelation: "studies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comments: {
         Row: {
           author: string | null

@@ -22,3 +22,6 @@ export function useListeningMutation<A>(serverFn: (a: { data: A }) => Promise<un
   });
 }
 export { fn };
+
+export const analysisQuery = (studyId: string) => queryOptions({ queryKey: ["analysis", studyId], queryFn: () => fn.getLatestAnalysis({ data: { studyId } }) });
+export type AnalysisRow = NonNullable<Awaited<ReturnType<typeof fn.getLatestAnalysis>>>;

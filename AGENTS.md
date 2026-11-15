@@ -33,5 +33,6 @@ use the editor.
 - Social URL detection/validation lives in `src/lib/platforms.ts` (tested); reuse it for any ingest path.
 - Data lives in Lovable Cloud (studies, sources, comments); all access goes through server functions in `src/lib/listening.functions.ts` using the admin client (no auth yet, tables have no anon/authenticated grants). Client hooks/query keys in `src/lib/listening.ts`.
 - Apify: one specialized Actor per platform in `src/lib/apify.server.ts` (gateway). Extraction is async: startExtraction starts runs, the page polls syncExtraction which ingests the dataset when the run succeeds — avoids long server requests.
+- AI analysis: `src/lib/ai/analysis.server.ts` (AI SDK Responses via Lovable AI Gateway, strict zod schema). The model cites comment indexes only; `analyzeStudy` maps them back to real stored comments so verbatims are never invented. Results persist in `analyses` (latest row per study is shown).
 - Routes: `/` Quick Pulse bar + chooser, `/estudios` deep studies list, `/estudios/$studyId` detail for both kinds (Study.kind quick|deep, missing = deep). Editorial look: Instrument Serif / Work Sans / JetBrains Mono, tokens in styles.css.
 <!-- AGENT-MEMORY:END -->

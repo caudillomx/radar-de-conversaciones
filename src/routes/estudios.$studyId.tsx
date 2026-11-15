@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { Masthead } from "@/components/kimedia/Masthead";
 import { PlatformMark } from "@/components/kimedia/PlatformMark";
+import { AnalysisPanel } from "@/components/kimedia/AnalysisPanel";
 import { PLATFORMS, parseSocialUrl, splitUrls, type Platform } from "@/lib/platforms";
 import { commentsQuery, fn, studyQuery, useListeningMutation, type SourceRow } from "@/lib/listening";
 
@@ -98,13 +99,7 @@ function StudyPage() {
 
       <div className="mt-10 grid gap-10 lg:grid-cols-[1fr_22rem]">
         <div className="min-w-0">
-          {quick && (
-            <section className="mb-10 border-2 border-accent bg-card p-6">
-              <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-accent">Alerta rápida</h2>
-              <p className="mt-3 font-display text-3xl">{totalComments ? `${totalComments.toLocaleString("es-MX")} comentarios listos para la lectura exprés.` : "Extrae los comentarios para preparar la lectura exprés."}</p>
-              <p className="mt-2 text-sm text-muted-foreground">Sentimiento, narrativa principal, cita clave y hook se generarán con IA en la siguiente fase.</p>
-            </section>
-          )}
+          {quick && <div className="mb-10"><AnalysisPanel studyId={studyId} commentCount={totalComments} quick /></div>}
 
           {!quickFull && (
             <section className="border border-foreground bg-card p-6">
@@ -146,6 +141,8 @@ function StudyPage() {
               </ul>
             )}
           </section>
+
+          {!quick && <div className="mt-12"><AnalysisPanel studyId={studyId} commentCount={totalComments} quick={false} /></div>}
 
           <CommentsPanel studyId={studyId} sources={study.sources} />
         </div>
