@@ -92,7 +92,7 @@ export const startExtraction = createServerFn({ method: "POST" })
     return results;
   });
 
-/** Checks run status in Apify; on success, ingests the dataset into comments. */
+/** Ingests available dataset snapshots while running, then finalizes on success. */
 export const syncExtraction = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ sourceId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
@@ -101,8 +101,8 @@ export const syncExtraction = createServerFn({ method: "POST" })
     const src = must(await s.from("sources").select("*").eq("id", data.sourceId).single());
     if (!src.apify_run_id || (src.status !== "extrayendo" && src.status !== "iniciando")) return { status: src.status, apifyStatus: null };
     const run = await getRun(src.apify_run_id);
-    if (run.status === "READY" || run.status === "RUNNING") return { status: "extrayendo", apifyStatus: run.status, message: run.statusMessage ?? null };
-    if (run.status !== "SUCCEEDED") {
+    const active = ["READY", "RUNNING", "TIMING-OUT", "ABORTING"].includes(run.status);
+    if (!active && run.status !== "SUCCEEDED") {
       const err = `La extracción terminó con estado ${run.status}${run.statusMessage ? `: ${run.statusMessage}` : ""}`;
       await s.from("sources").update({ status: "error", error: err, finished_at: new Date().toISOString() }).eq("id", src.id);
       return { status: "error", apifyStatus: run.status };
@@ -117,12 +117,23 @@ export const syncExtraction = createServerFn({ method: "POST" })
       seen.add(ext);
       return [{ ...n, external_id: ext, source_id: src.id, raw: it as never }];
     });
-    for (let i = 0; i < rows.length; i += 500) {
-      chk(await s.from("comments").upsert(rows.slice(i, i + 500), { onConflict: "source_id,external_id" }));
+    // Existing IDs make repeated partial snapshots idempotent without rewriting
+    // thousands of already stored comments on every poll.
+    const existing = must(await s.from("comments").select("external_id").eq("source_id", src.id).limit(30000));
+    const stored = new Set(existing.map((comment) => comment.external_id));
+    const fresh = rows.filter((comment) => !stored.has(comment.external_id));
+    for (let i = 0; i < fresh.length; i += 500) {
+      chk(await s.from("comments").upsert(fresh.slice(i, i + 500), { onConflict: "source_id,external_id", ignoreDuplicates: true }));
     }
-    const { count } = await s.from("comments").select("id", { count: "exact", head: true }).eq("source_id", src.id);
+    const countResult = await s.from("comments").select("id", { count: "exact", head: true }).eq("source_id", src.id);
+    chk(countResult);
+    const count = countResult.count ?? rows.length;
+    if (active) {
+      chk(await s.from("sources").update({ comment_count: count }).eq("id", src.id).eq("apify_run_id", run.id));
+      return { status: "extrayendo", apifyStatus: run.status, ingested: fresh.length, collected: count, message: run.statusMessage ?? null };
+    }
     const fin = rows.length === 0 && items.length > 0 ? { status: "error", error: "Apify devolvió datos, pero ninguno parece un comentario" } : { status: "extraida", error: null };
-    await s.from("sources").update({ ...fin, comment_count: count ?? rows.length, finished_at: new Date().toISOString() }).eq("id", src.id);
+    chk(await s.from("sources").update({ ...fin, comment_count: count, finished_at: new Date().toISOString() }).eq("id", src.id).eq("apify_run_id", run.id));
     return { status: fin.status, apifyStatus: run.status, ingested: rows.length };
   });
 

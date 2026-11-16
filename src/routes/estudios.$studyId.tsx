@@ -7,6 +7,7 @@ import { PlatformMark } from "@/components/kimedia/PlatformMark";
 import { AnalysisPanel } from "@/components/kimedia/AnalysisPanel";
 import { PLATFORMS, parseSocialUrl, splitUrls, type Platform } from "@/lib/platforms";
 import { commentsQuery, fn, studyQuery, useListeningMutation, type SourceRow } from "@/lib/listening";
+import { extractionProgress } from "@/lib/extraction-progress";
 
 export const Route = createFileRoute("/estudios/$studyId")({
   head: () => ({
@@ -44,6 +45,7 @@ function StudyPage() {
   const add = useListeningMutation(fn.addSources, studyId);
   const start = useListeningMutation(fn.startExtraction, studyId);
   const markReady = useListeningMutation(fn.updateSource, studyId);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   // Poll Apify for every running source.
   const sync = useServerFn(fn.syncExtraction);
@@ -51,15 +53,25 @@ function StudyPage() {
   useEffect(() => {
     if (!running) return;
     let stop = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let failures = 0;
     const tick = async () => {
-      await Promise.allSettled(running.split(",").map((id) => sync({ data: { sourceId: id } })));
+      const results = await Promise.allSettled(running.split(",").map((id) => sync({ data: { sourceId: id } })));
       if (stop) return;
-      qc.invalidateQueries({ queryKey: ["study", studyId] });
-      qc.invalidateQueries({ queryKey: ["comments", studyId] });
+      const failed = results.find((result) => result.status === "rejected");
+      failures = failed ? failures + 1 : 0;
+      const message = failed?.status === "rejected" ? String(failed.reason?.message ?? "No se pudo actualizar la extracción.") : null;
+      setSyncError(message);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["study", studyId] }),
+        qc.invalidateQueries({ queryKey: ["comments", studyId] }),
+      ]);
+      // Do not overlap polls, and stop permanent failures instead of retrying forever.
+      const permanent = message && /\[(400|401|402|403|404)\]/.test(message);
+      if (!stop && !permanent && failures < 3) timer = setTimeout(tick, 6000 * 2 ** failures);
     };
-    const t = setInterval(tick, 6000);
     tick();
-    return () => { stop = true; clearInterval(t); };
+    return () => { stop = true; clearTimeout(timer); };
   }, [running, studyId, sync, qc]);
 
   const parsed = useMemo(() => splitUrls(text).map(parseSocialUrl), [text]);
@@ -79,10 +91,8 @@ function StudyPage() {
   const sources = study.sources.filter((s) => filter === "all" || s.platform === filter);
   const counts = (Object.keys(PLATFORMS) as Platform[]).map((p) => [p, study.sources.filter((s) => s.platform === p).length] as const);
   const ready = study.sources.filter((s) => s.status === "lista" || s.status === "error");
-  const done = study.sources.filter((s) => s.status === "extraida").length;
   const runningCount = study.sources.filter((s) => RUNNING.has(s.status)).length;
-  const totalComments = study.sources.reduce((n, s) => n + s.comment_count, 0);
-  const progress = study.sources.length ? Math.round(((done + study.sources.filter((s) => s.status === "error").length) / study.sources.length) * 100) : 0;
+  const { collected: totalComments, target, percent: progress } = extractionProgress(study.sources);
 
   function commit() {
     const items = (quick ? newValid.slice(0, Math.max(0, 2 - study!.sources.length)) : newValid).map((p) => p.ok ? { url: p.url, platform: p.platform, postId: p.postId } : null!);
@@ -149,15 +159,17 @@ function StudyPage() {
 
         <aside className="h-fit border border-foreground p-6 lg:sticky lg:top-6">
           <h2 className="font-mono text-xs uppercase tracking-[0.2em]">{quick ? "Extracción exprés" : "02 — Extracción"}</h2>
-          <p className="mt-4 font-display text-6xl">{totalComments.toLocaleString("es-MX")}</p>
-          <p className="text-sm text-muted-foreground">comentarios extraídos</p>
+          <div role="status" aria-live="polite" aria-atomic="true" className="mt-4">
+            <p className="font-display text-5xl tabular-nums">{totalComments.toLocaleString("es-MX")}</p>
+            <p className="mt-1 text-sm text-muted-foreground">de {target.toLocaleString("es-MX")} comentarios · {runningCount ? "recolectados hasta ahora" : "recolectados"}</p>
+          </div>
 
           <div className="mt-6">
             <div className="flex justify-between font-mono text-[11px] uppercase text-muted-foreground">
               <span>{runningCount ? `Extrayendo ${runningCount}…` : "Progreso"}</span><span>{progress}%</span>
             </div>
-            <div className="mt-1 h-2 w-full bg-secondary">
-              <div className={`h-full bg-accent transition-all ${runningCount ? "animate-pulse" : ""}`} style={{ width: `${runningCount && !progress ? 8 : progress}%` }} />
+            <div role="progressbar" aria-label="Comentarios recolectados" aria-valuemin={0} aria-valuemax={target || 1} aria-valuenow={Math.min(totalComments, target)} className="mt-1 h-2 w-full bg-secondary">
+              <div className={`h-full bg-accent transition-all ${runningCount ? "animate-pulse" : ""}`} style={{ width: `${progress}%` }} />
             </div>
           </div>
 
@@ -177,6 +189,7 @@ function StudyPage() {
             {start.isPending ? "Iniciando…" : runningCount ? "Extracción en curso…" : `Extraer comentarios con Apify${ready.length ? ` (${ready.length})` : ""}`}
           </button>
           {start.error && <p className="mt-2 text-xs text-destructive">{start.error.message}</p>}
+          {syncError && <p className="mt-2 text-xs text-destructive">{syncError} Recarga la página para volver a consultar el progreso.</p>}
           <p className="mt-2 text-xs text-muted-foreground">Cada fuente usa un Actor especializado de Apify según su red. Las extracciones pueden tardar de 1 a 5 minutos.</p>
         </aside>
       </div>
@@ -207,10 +220,11 @@ function SourceCard({ s, studyId }: { s: SourceRow; studyId: string }) {
           <PlatformMark platform={platform} />
           <div className="min-w-0 flex-1">
             <a href={s.url} target="_blank" rel="noreferrer" className="block truncate text-sm font-medium hover:text-accent">{u.hostname.replace("www.", "")}{u.pathname}</a>
-            <p className="font-mono text-[11px] text-muted-foreground">ID {s.post_id ?? "—"}{s.comment_count ? ` · ${s.comment_count} comentarios` : ""}</p>
+            <p className="font-mono text-[11px] text-muted-foreground">ID {s.post_id ?? "—"}</p>
           </div>
           <span className={`font-mono text-[11px] uppercase ${st.cls} ${locked ? "animate-pulse" : ""}`}>{st.label}</span>
         </div>
+        <p className="font-mono text-[11px] text-muted-foreground">{s.comment_count.toLocaleString("es-MX")} de {s.max_comments.toLocaleString("es-MX")} comentarios</p>
         {s.error && <p className="text-xs text-destructive">{s.error}</p>}
         <div className="flex flex-wrap items-center gap-4 border-t border-border pt-3 text-sm">
           <label className="flex items-center gap-2">Máx.
