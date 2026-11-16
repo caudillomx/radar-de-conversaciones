@@ -4,6 +4,8 @@ import { analysisQuery, fn, useListeningMutation } from "@/lib/listening";
 import { PLATFORMS, type Platform } from "@/lib/platforms";
 import { PlatformMark } from "./PlatformMark";
 import { useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { ANALYSIS_TIMEOUT_MS, ANALYSIS_EXPIRED_MESSAGE } from "@/lib/analysis-lifecycle";
 
 type Quote = { text: string; author: string | null; likes: number; platform: string; url: string | null; is_reply: boolean };
 type Result = {
@@ -22,9 +24,18 @@ const CHANNEL = { linkedin: "LinkedIn", x: "X", carrusel: "Carrusel" };
 
 export function AnalysisPanel({ studyId, commentCount, quick }: { studyId: string; commentCount: number; quick: boolean }) {
   const qc = useQueryClient();
-  const { data: analysis } = useQuery({ ...analysisQuery(studyId), refetchInterval: (q) => (q.state.data?.status === "procesando" ? 5000 : false) });
   const run = useListeningMutation(fn.analyzeStudy, studyId);
-  const busy = run.isPending || analysis?.status === "procesando";
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const { data: analysis } = useQuery({ ...analysisQuery(studyId), refetchInterval: (q) => (run.isPending || q.state.data?.status === "procesando" ? 1000 : false) });
+  const attemptStart = startedAt ?? (analysis?.status === "procesando" ? Date.parse(analysis.created_at) : null);
+  const expired = attemptStart !== null && now - attemptStart >= ANALYSIS_TIMEOUT_MS && (run.isPending || analysis?.status === "procesando");
+  const busy = !expired && (run.isPending || analysis?.status === "procesando");
+  useEffect(() => {
+    if (!run.isPending && analysis?.status !== "procesando") return;
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, [run.isPending, analysis?.status]);
   const [step, setStep] = useState(0);
   useEffect(() => {
     if (!busy) { setStep(0); return; }
@@ -34,19 +45,19 @@ export function AnalysisPanel({ studyId, commentCount, quick }: { studyId: strin
   useEffect(() => { if (run.isSuccess || run.isError) qc.invalidateQueries({ queryKey: ["analysis", studyId] }); }, [run.isSuccess, run.isError, qc, studyId]);
 
   const r = analysis?.status === "completado" ? (analysis.result as unknown as Result) : null;
-  const err = run.error?.message ?? (analysis?.status === "error" ? analysis.error : null);
+  const err = expired ? ANALYSIS_EXPIRED_MESSAGE : run.error?.message ?? (analysis?.status === "error" ? analysis.error : null);
 
   return (
     <section className={`${quick ? "border-2 border-accent" : "border border-foreground"} bg-card p-6`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-accent">{quick ? "Alerta rápida" : "03 — Informe de inteligencia"}</h2>
-          {r && <p className="mt-1 font-mono text-[11px] text-muted-foreground">{r.analyzed_comments} de {r.total_comments} comentarios · {new Date(analysis!.created_at).toLocaleString("es-MX")}</p>}
+          {r && analysis && <p className="mt-1 font-mono text-[11px] text-muted-foreground">{r.analyzed_comments} de {r.total_comments} comentarios · {new Date(analysis.created_at).toLocaleString("es-MX")}</p>}
         </div>
-        <button onClick={() => run.mutate({ studyId })} disabled={busy || commentCount < 5}
-          className="bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-accent disabled:opacity-40">
-          {busy ? "Analizando…" : r ? "Volver a analizar" : "✦ Analizar con IA"}
-        </button>
+        <Button onClick={() => { run.reset(); setStartedAt(Date.now()); setNow(Date.now()); run.mutate({ studyId }); }} disabled={busy || commentCount < 5}
+          className="rounded-none px-5 py-2.5 hover:bg-accent">
+          {busy ? "Analizando…" : err ? "Reintentar análisis" : r ? "Volver a analizar" : "✦ Analizar con IA"}
+        </Button>
       </div>
 
       {busy && (

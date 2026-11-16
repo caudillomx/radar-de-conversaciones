@@ -1,9 +1,8 @@
-import { createOpenAI } from "@ai-sdk/openai";
 import { NoObjectGeneratedError, Output, streamText } from "ai";
 import { z } from "zod";
-import { createLovableAiGatewayRunIdFetch } from "./run-id.server";
+import { createLovableAiGatewayProvider } from "./gateway.server.ts";
 
-export const ANALYSIS_MODEL = "openai/gpt-6-astra";
+export const ANALYSIS_MODEL = "google/gemini-3.8-flash";
 
 const sentimentEnum = z.enum(["positivo", "neutro", "negativo", "mixto"]);
 export const analysisSchema = z.object({
@@ -34,32 +33,33 @@ Produce una síntesis en español, rigurosa y basada SOLO en los comentarios. No
 - verbatims: 6 a 10 ids de citas de alto impacto (por fuerza, representatividad o likes) con por qué importan.
 - keywords: 10 a 20 conceptos más repetidos, weight 1-100.
 - hooks: 6 ganchos (2 linkedin, 2 x, 2 carrusel) que posicionen a KiMedia como autoridad, sin citar nombres de usuarios.
-- headline: una frase editorial potente. executive_summary: 3-4 frases.`;
+- headline: una frase editorial potente. executive_summary: 3-4 frases.
+Devuelve SOLO un objeto JSON, sin markdown ni texto adicional, con esta estructura exacta (repite elementos según las cantidades anteriores):
+{"headline":"...","executive_summary":"...","temperature":{"score":0,"label":"...","summary":"..."},"sentiment":{"positive":0,"neutral":100,"negative":0},"narratives":[{"title":"...","description":"...","traction":"alta","share":0,"sentiment":"neutro","example_ids":[0]}],"archetypes":[{"name":"...","description":"...","stance":"...","tone":"...","arguments":["..."],"share":0,"example_id":0}],"verbatims":[{"id":0,"why":"..."}],"keywords":[{"term":"...","weight":1}],"hooks":[{"channel":"linkedin","text":"..."}]}
+Valores permitidos: traction = alta/media/baja; sentiment narrativo = positivo/neutro/negativo/mixto; channel = linkedin/x/carrusel. example_id puede ser null.`;
 
 export async function runAnalysis(input: { studyTitle: string; topic: string; comments: string }) {
   const apiKey = process.env["LOVABLE_API_KEY"];
   if (!apiKey) throw new Error("LOVABLE_API_KEY no está configurada");
-  const runIdFetch = createLovableAiGatewayRunIdFetch();
-  const provider = createOpenAI({
-    baseURL: "https://ai.gateway.lovable.dev/v1",
-    apiKey,
-    headers: { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "vercel-ai-sdk" },
-    fetch: runIdFetch.fetch,
-  });
+  const provider = createLovableAiGatewayProvider(apiKey, undefined, { baseURL: "https://ai.gateway.lovable.dev/v1" });
   const result = streamText({
-    model: provider.responses(ANALYSIS_MODEL),
-    instructions: INSTRUCTIONS,
+    model: provider(ANALYSIS_MODEL),
+    system: INSTRUCTIONS,
     prompt: `Estudio: ${input.studyTitle}${input.topic ? `\nTema: ${input.topic}` : ""}\n\nComentarios:\n${input.comments}`,
     output: Output.object({ schema: analysisSchema }),
     maxRetries: 0,
-    providerOptions: {
-      openai: { forceReasoning: true, reasoningEffort: "low", reasoningSummary: "auto", store: false, include: ["reasoning.encrypted_content"] },
-    },
   });
   try {
     return await result.output;
   } catch (e) {
-    if (NoObjectGeneratedError.isInstance(e)) throw new Error("La IA no devolvió un análisis válido. Intenta de nuevo.");
+    if (NoObjectGeneratedError.isInstance(e)) {
+      try {
+        if (!e.text) throw new Error("Sin respuesta estructurada");
+        return analysisSchema.parse(JSON.parse(e.text.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "")));
+      } catch {
+        throw new Error("La IA no devolvió un análisis válido. Intenta de nuevo.");
+      }
+    }
     const status = (e as { statusCode?: number }).statusCode;
     if (status === 402) throw new Error("Sin créditos de IA. Agrega créditos en Settings → Plans & credits.");
     if (status === 429) throw new Error("Límite de peticiones de IA alcanzado; intenta en un minuto.");

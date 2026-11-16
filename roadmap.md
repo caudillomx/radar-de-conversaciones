@@ -1,0 +1,2 @@
+- [x] Cambiar el análisis a Gemini 3.8 Flash y verificarlo con comentarios reales.
+- [x] Expirar análisis a los dos minutos, habilitar reintento y proteger contra resultados tardíos.
