@@ -42,7 +42,7 @@ export const addSources = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ studyId: z.string().uuid(), items: z.array(srcItem).max(100), ready: z.boolean().optional(), maxComments: z.number().int().optional() }).parse(d))
   .handler(async ({ data }) => {
     const s = await db();
-    const rows = data.items.map((i) => ({ study_id: data.studyId, url: i.url, platform: i.platform, post_id: i.postId, status: data.ready ? "lista" : "pendiente", max_comments: data.maxComments ?? 500 }));
+    const rows = data.items.map((i) => ({ study_id: data.studyId, url: i.url, platform: i.platform, post_id: i.postId, status: data.ready ? "lista" : "pendiente", max_comments: data.maxComments ?? 2500 }));
     chk(await s.from("sources").upsert(rows, { onConflict: "study_id,url", ignoreDuplicates: true }));
     await s.from("studies").update({ updated_at: new Date().toISOString() }).eq("id", data.studyId);
     return { ok: true };
@@ -54,7 +54,7 @@ export const createQuickPulse = createServerFn({ method: "POST" })
     const s = await db();
     const title = `Pulso · ${new Date().toLocaleString("es-MX", { timeZone: "America/Mexico_City", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`;
     const st = must(await s.from("studies").insert({ kind: "quick", title, topic: "" }).select("id").single());
-    chk(await s.from("sources").insert(data.items.map((i) => ({ study_id: st.id, url: i.url, platform: i.platform, post_id: i.postId, status: "lista", max_comments: 250 }))));
+    chk(await s.from("sources").insert(data.items.map((i) => ({ study_id: st.id, url: i.url, platform: i.platform, post_id: i.postId, status: "lista", max_comments: 1000 }))));
     return st;
   });
 

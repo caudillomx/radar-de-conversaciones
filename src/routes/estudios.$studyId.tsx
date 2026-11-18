@@ -96,7 +96,7 @@ function StudyPage() {
 
   function commit() {
     const items = (quick ? newValid.slice(0, Math.max(0, 2 - study!.sources.length)) : newValid).map((p) => p.ok ? { url: p.url, platform: p.platform, postId: p.postId } : null!);
-    add.mutate({ studyId, items, ready: quick, maxComments: quick ? 250 : 500 }, { onSuccess: () => setText("") });
+    add.mutate({ studyId, items, ready: quick, maxComments: quick ? 1000 : 2500 }, { onSuccess: () => setText("") });
   }
 
   return (
@@ -229,7 +229,7 @@ function SourceCard({ s, studyId }: { s: SourceRow; studyId: string }) {
         <div className="flex flex-wrap items-center gap-4 border-t border-border pt-3 text-sm">
           <label className="flex items-center gap-2">Máx.
             <select disabled={locked} value={s.max_comments} onChange={(e) => update.mutate({ id: s.id, patch: { max_comments: +e.target.value } })} className="border border-border bg-background px-1 py-0.5">
-              {[50, 100, 250, 500, 1000, 2500, 5000].map((n) => <option key={n} value={n}>{n}</option>)}
+              {[50, 100, 250, 500, 1000, 2500, 5000, 10000].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </label>
           <label className="flex items-center gap-2">
