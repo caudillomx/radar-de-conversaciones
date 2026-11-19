@@ -9,4 +9,4 @@
 - [x] Pulsos recientes con tema y resumen.
 - [x] Metodología explícita en informe y página.
 - [x] Quitar hooks para redes.
-- [ ] Ajustar la presentación al estilo exacto de Wizr (esperando la referencia del usuario).
+- [x] Presentación en el estilo del reporte visual de Wizr.
