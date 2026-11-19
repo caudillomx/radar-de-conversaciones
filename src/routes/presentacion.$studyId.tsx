@@ -118,8 +118,73 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
   let idx = 0;
   const k = (t: string) => `${String(++idx).padStart(2, "0")} · ${t}`;
 
+  // Quick Pulse: 2 dense slides + methodology
+  if (quick) {
+    const s = r.sentiment;
+    S.push({ section: "Escucha rápida", node: (
+      <Body>
+        <div>
+          <p className="text-base font-bold uppercase tracking-[0.3em] text-primary">Escucha rápida · {topic} · {date}</p>
+          <h2 className="mt-3 text-[52px] font-bold leading-[1.08]">{r.headline}</h2>
+        </div>
+        <div className="grid flex-1 grid-cols-[1fr_640px] gap-10">
+          <div className="flex flex-col gap-6">
+            <p className="text-2xl leading-snug text-muted-foreground">{r.executive_summary}</p>
+            <div className="mt-auto grid grid-cols-3 gap-4">
+              {([["Comentarios", n.toLocaleString("es-MX")], ["Temperatura", `${Math.round(r.temperature.score)}°`], ["Narrativas", String(r.narratives.length)]] as const).map(([l, v]) => (
+                <div key={l} className="rounded-2xl border border-border bg-background px-6 py-5"><p className="text-sm font-bold uppercase tracking-[0.25em] text-muted-foreground">{l}</p><p className="mt-1 text-5xl font-bold">{v}</p></div>
+              ))}
+            </div>
+          </div>
+          <Panel className="flex flex-col gap-5">
+            <p className="text-sm font-bold uppercase tracking-[0.3em] text-primary">Sentimiento</p>
+            <div className="flex h-8 overflow-hidden rounded-full"><div className="bg-success" style={{ width: `${s.positive}%` }} /><div className="bg-muted-foreground" style={{ width: `${s.neutral}%` }} /><div className="bg-destructive" style={{ width: `${s.negative}%` }} /></div>
+            <div className="grid grid-cols-3 gap-3">
+              {([["Positivo", s.positive, "text-success"], ["Neutral", s.neutral, "text-muted-foreground"], ["Negativo", s.negative, "text-destructive"]] as const).map(([l, v, c]) => (
+                <div key={l}><p className="text-sm font-bold uppercase text-muted-foreground">{l}</p><p className={`text-5xl font-bold ${c}`}>{Math.round(v)}%</p></div>
+              ))}
+            </div>
+            <div className="mt-auto rounded-2xl bg-primary/10 p-6">
+              <p className="text-sm font-bold uppercase tracking-[0.3em] text-primary">Temperatura · {r.temperature.label}</p>
+              <p className="mt-2 text-xl leading-snug">{r.temperature.summary}</p>
+            </div>
+          </Panel>
+        </div>
+      </Body>
+    ) });
+    const v = r.verbatims[0];
+    S.push({ section: "Escucha rápida", node: (
+      <Body>
+        <Head k="Qué se dice y quién lo dice" title="Narrativas, voces y cita clave" />
+        <div className="grid flex-1 grid-cols-2 gap-10">
+          <div className="space-y-3">
+            {r.narratives.slice(0, 4).map((x, i) => (
+              <div key={i} className="rounded-2xl border border-border bg-background px-6 py-4">
+                <div className="flex items-center gap-4"><span className="text-2xl font-bold text-primary">N{String(i + 1).padStart(2, "0")}</span><span className="flex-1 text-2xl font-bold leading-tight">{x.title}</span><span className="text-2xl font-bold">{Math.round(x.share)}%</span><Pill s={x.sentiment} /></div>
+                <div className="mt-3 h-2 rounded-full bg-secondary"><div className="h-full rounded-full bg-primary" style={{ width: `${x.share}%` }} /></div>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-col gap-5">
+            <div className="grid grid-cols-3 gap-3">
+              {r.archetypes.slice(0, 3).map((a, i) => (
+                <Panel key={i} className="p-5"><p className="text-3xl font-bold text-primary">{Math.round(a.share)}%</p><p className="mt-1 text-xl font-bold leading-tight">{a.name}</p><p className="mt-2 text-base leading-snug text-muted-foreground">{a.stance}</p></Panel>
+              ))}
+            </div>
+            {v && (
+              <div className="mt-auto rounded-3xl bg-foreground p-8 text-background">
+                <p className="text-[28px] font-bold leading-snug">“{v.text.length > 220 ? v.text.slice(0, 220) + "…" : v.text}”</p>
+                <p className="mt-4 text-lg opacity-70">@{(v.author ?? "anónimo").replace(/^@+/, "")} · {PLATFORMS[v.platform as Platform]?.label} · ♥ {v.likes.toLocaleString("es-MX")}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </Body>
+    ) });
+  }
+
   // Cover
-  S.push({ bare: true, node: (
+  if (!quick) S.push({ bare: true, node: (
     <div className="absolute inset-0 flex">
       <div className="relative w-[57.5%] overflow-hidden bg-foreground text-background">
         <div className="absolute -left-40 bottom-[-200px] h-[700px] w-[700px] rounded-full bg-primary/40 blur-[120px]" />
@@ -143,7 +208,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
   ) });
 
   // Executive summary
-  S.push({ section: "Resumen", node: (
+  if (!quick) S.push({ section: "Resumen", node: (
     <Body>
       <div className="grid flex-1 grid-cols-[1.35fr_1fr] gap-16">
         <div><Head k={k("Resumen ejecutivo")} title={r.headline} /><div className="mt-6 h-1 w-16 bg-accent" /><p className="mt-8 text-2xl leading-relaxed text-muted-foreground">{r.executive_summary}</p></div>
@@ -159,7 +224,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
   // Sentiment
   const p = r.sentiment;
   const dom = p.negative >= p.positive && p.negative >= p.neutral ? ["Negativo", "text-destructive"] : p.positive >= p.neutral ? ["Positivo", "text-success"] : ["Neutral", "text-muted-foreground"];
-  S.push({ section: "Sentimiento", node: (
+  if (!quick) S.push({ section: "Sentimiento", node: (
     <Body>
       <Head k={k("Pulso de sentimiento")} title="¿Cómo se siente la conversación?" />
       <div className="grid grid-cols-[520px_1fr] gap-16">
@@ -216,7 +281,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
 
   // Narratives
   const nar = r.narratives.slice(0, 6); const nmax = Math.max(1, ...nar.map((x) => x.share));
-  S.push({ section: "Narrativas", node: (
+  if (!quick) S.push({ section: "Narrativas", node: (
     <Body>
       <Head k={k("Narrativas dominantes")} title={`Las ${nar.length} ideas que circularon`} />
       <Panel className="py-6">
@@ -244,7 +309,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
   ) });
 
   // Archetypes
-  S.push({ section: "Arquetipos", node: (
+  if (!quick) S.push({ section: "Arquetipos", node: (
     <Body>
       <Head k={k("Arquetipos conversacionales")} title="Quiénes hablan y desde dónde" />
       <div className="grid flex-1 gap-6" style={{ gridTemplateColumns: `repeat(${Math.min(5, r.archetypes.length)}, 1fr)` }}>
@@ -271,7 +336,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
   ) });
 
   // Voices
-  S.push({ section: "Voces clave", node: (
+  if (!quick) S.push({ section: "Voces clave", node: (
     <Body>
       <Head k={k("Voces de mayor impacto")} title="Lo que más resonó" />
       <div className="space-y-4">
