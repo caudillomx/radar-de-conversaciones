@@ -58,6 +58,72 @@ export type Database = {
           },
         ]
       }
+      comment_labels: {
+        Row: {
+          account_type: string | null
+          age: string | null
+          analysis_id: string
+          comment_id: string
+          country: string | null
+          created_at: string
+          gender: string | null
+          human_sentiment: string | null
+          human_stance: string | null
+          id: string
+          language: string | null
+          reviewed_at: string | null
+          sentiment: string | null
+          stance: string | null
+        }
+        Insert: {
+          account_type?: string | null
+          age?: string | null
+          analysis_id: string
+          comment_id: string
+          country?: string | null
+          created_at?: string
+          gender?: string | null
+          human_sentiment?: string | null
+          human_stance?: string | null
+          id?: string
+          language?: string | null
+          reviewed_at?: string | null
+          sentiment?: string | null
+          stance?: string | null
+        }
+        Update: {
+          account_type?: string | null
+          age?: string | null
+          analysis_id?: string
+          comment_id?: string
+          country?: string | null
+          created_at?: string
+          gender?: string | null
+          human_sentiment?: string | null
+          human_stance?: string | null
+          id?: string
+          language?: string | null
+          reviewed_at?: string | null
+          sentiment?: string | null
+          stance?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comment_labels_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_labels_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comments: {
         Row: {
           author: string | null
@@ -179,6 +245,7 @@ export type Database = {
           created_at: string
           id: string
           kind: string
+          stance_target: string | null
           title: string
           topic: string
           updated_at: string
@@ -188,6 +255,7 @@ export type Database = {
           created_at?: string
           id?: string
           kind?: string
+          stance_target?: string | null
           title: string
           topic?: string
           updated_at?: string
@@ -197,6 +265,7 @@ export type Database = {
           created_at?: string
           id?: string
           kind?: string
+          stance_target?: string | null
           title?: string
           topic?: string
           updated_at?: string

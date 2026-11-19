@@ -38,4 +38,5 @@ use the editor.
 - Presentation deck is `/presentacion/$studyId`: 1920x1080 slides scaled on screen, exported via browser print with `@page` size.
 - Analysis expiry is shared in `src/lib/analysis-lifecycle.ts`; expire stored attempts and conditionally save only processing rows so late results cannot replace expired attempts or retries. Never abort upstream generation with a timer: it may still be billed.
 - Routes: `/` Quick Pulse bar + chooser, `/estudios` deep studies list, `/estudios/$studyId` detail for both kinds (Study.kind quick|deep, missing = deep). Global typography and palette live as tokens in styles.css, with remote fonts loaded from __root head links.
+- Per-comment labels persist in `comment_labels` (per analysis, human_* columns reserved for review); all label aggregates (sentiment, stance with 95% MoE, demographics) come from `src/lib/label-aggregates.ts` (tested) so they can be recomputed from stored labels.
 <!-- AGENT-MEMORY:END -->

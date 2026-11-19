@@ -27,14 +27,14 @@ function Dashboard() {
   const del = useListeningMutation(fn.deleteStudy);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: "", topic: "", client: "" });
+  const [form, setForm] = useState({ title: "", topic: "", client: "", stance: "" });
   const totalSources = studies.reduce((n, s) => n + s.sources.length, 0);
   const ready = studies.reduce((n, s) => n + s.sources.reduce((m, x) => m + x.comment_count, 0), 0);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.title.trim()) return;
-    create.mutate({ kind: "deep", title: form.title.trim(), topic: form.topic.trim(), client: form.client.trim() || null }, {
+    create.mutate({ kind: "deep", title: form.title.trim(), topic: form.topic.trim(), client: form.client.trim() || null, stance_target: form.stance.trim() || null }, {
       onSuccess: (s) => navigate({ to: "/estudios/$studyId", params: { studyId: (s as { id: string }).id } }),
     });
   }
@@ -72,6 +72,10 @@ function Dashboard() {
               <Field label="Título del estudio *" value={form.title} onChange={(v) => setForm({ ...form, title: v })} placeholder="Reforma judicial: reacción digital" autoFocus />
               <Field label="Tema / coyuntura" value={form.topic} onChange={(v) => setForm({ ...form, topic: v })} placeholder="Política nacional" />
               <Field label="Cliente o prospecto" value={form.client} onChange={(v) => setForm({ ...form, client: v })} placeholder="Opcional" />
+              <div className="md:col-span-3">
+                <Field label="¿Postura frente a qué?" value={form.stance} onChange={(v) => setForm({ ...form, stance: v })} placeholder="la reforma al Poder Judicial" />
+                <p className="mt-1 text-xs text-muted-foreground">Define un objeto concreto: una persona, decisión o propuesta. Si lo dejas vacío, solo se mide sentimiento.</p>
+              </div>
               <div className="md:col-span-3">
                 <button className="bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-40" disabled={!form.title.trim() || create.isPending}>{create.isPending ? "Creando…" : "Crear y agregar URLs →"}</button>
               </div>

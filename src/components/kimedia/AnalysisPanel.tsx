@@ -105,6 +105,8 @@ function Report({ r, quick }: { r: Result; quick: boolean }) {
         </Card>
       </div>
 
+      {r.stance && <StanceBlock s={r.stance} />}
+
       {r.stats && (
         <div className="grid gap-6 md:grid-cols-2">
           <Card title="Volumen de comentarios en el tiempo"><Timeline data={r.stats.timeline} /></Card>
@@ -193,6 +195,34 @@ function Demographics({ d }: { d: NonNullable<Result["demographics"]> }) {
         <Card title="Tipo de cuenta"><DistBars data={d.account_type} color="bg-accent" /></Card>
         <Card title="Idioma"><DistBars data={d.language} color="bg-accent" /></Card>
         <Card title="País probable (con indicios)"><DistBars data={d.country} /></Card>
+      </div>
+    </div>
+  );
+}
+const STANCE_ROWS = [["favor", "A favor", "bg-success", "text-success"], ["contra", "En contra", "bg-destructive", "text-destructive"], ["ambigua", "Ambigua", "bg-muted-foreground", "text-muted-foreground"]] as const;
+function StanceBlock({ s }: { s: NonNullable<Result["stance"]> }) {
+  return (
+    <div>
+      <SectionTitle>Postura frente a: {s.target}</SectionTitle>
+      <p className="mb-4 max-w-3xl text-sm text-muted-foreground">{s.no_aplica}% de los comentarios clasificados no se refiere a este objeto. Sobre los {s.n_base.toLocaleString("es-MX")} que sí (n base), con margen de error al 95%. La postura se mide aparte del sentimiento.</p>
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card title="Distribución de postura">
+          <div className="flex h-4 w-full overflow-hidden">{STANCE_ROWS.map(([k, , bg]) => <div key={k} className={bg} style={{ width: `${s[k].share}%` }} />)}</div>
+          <dl className="mt-4 grid grid-cols-3 gap-2">
+            {STANCE_ROWS.map(([k, l, , c]) => <div key={k}><dt className="font-mono text-[11px] uppercase text-muted-foreground">{l}</dt><dd className={`font-display text-4xl ${c}`}>{Math.round(s[k].share)}%</dd><dd className="font-mono text-[11px] text-muted-foreground">±{s[k].moe} pts · {s[k].count.toLocaleString("es-MX")}</dd></div>)}
+          </dl>
+        </Card>
+        <Card title="Postura por plataforma">
+          <div className="space-y-3">
+            {s.by_platform.map((p) => (
+              <div key={p.platform}>
+                <div className="flex justify-between font-mono text-[11px] uppercase"><span>{PLATFORMS[p.platform as Platform]?.label ?? p.platform}</span><span className="text-muted-foreground">n={p.n_base} · no aplica {p.no_aplica}%</span></div>
+                <div className="mt-1 flex h-3 w-full overflow-hidden bg-secondary">{STANCE_ROWS.map(([k, , bg]) => <div key={k} className={bg} style={{ width: `${p[k].share}%` }} />)}</div>
+                <p className="mt-1 font-mono text-[11px] text-muted-foreground">{STANCE_ROWS.map(([k, l]) => `${l} ${Math.round(p[k].share)}% ±${p[k].moe}`).join(" · ")}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
     </div>
   );

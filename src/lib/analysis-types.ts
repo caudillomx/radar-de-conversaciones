@@ -1,6 +1,10 @@
 export type Quote = { text: string; author: string | null; likes: number; platform: string; url: string | null; is_reply: boolean };
 export type Dist = { key: string; count: number; share: number }[];
+type StanceCell = { share: number; count: number; moe: number };
+type StanceCore = { total: number; no_aplica: number; n_base: number; favor: StanceCell; contra: StanceCell; ambigua: StanceCell };
+export type StanceResult = StanceCore & { target: string; by_platform: (StanceCore & { platform: string })[] };
 export type AnalysisResult = {
+  stance?: StanceResult | null;
   topic_label?: string;
   headline: string; executive_summary: string; total_comments: number; analyzed_comments: number; classified_comments?: number;
   temperature: { score: number; label: string; summary: string };

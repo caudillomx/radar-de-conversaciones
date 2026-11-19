@@ -106,6 +106,7 @@ function StudyPage() {
       <p className="mt-4 font-mono text-xs uppercase tracking-[0.2em] text-accent">{quick ? "⚡ Quick Pulse · Lectura exprés" : "Deep Dive"}</p>
       <h1 className="mt-3 font-display text-5xl md:text-7xl">{study.title}</h1>
       <p className="mt-2 text-muted-foreground">{[study.topic, study.client].filter(Boolean).join(" · ")}</p>
+      <StanceField key={study.stance_target ?? ""} studyId={studyId} value={study.stance_target ?? ""} />
 
       <div className="mt-10 grid gap-10 lg:grid-cols-[1fr_22rem]">
         <div className="min-w-0">
@@ -321,6 +322,25 @@ function CommentsPanel({ studyId, sources }: { studyId: string; sources: SourceR
         </>
       )}
     </section>
+  );
+}
+
+function StanceField({ studyId, value }: { studyId: string; value: string }) {
+  const save = useListeningMutation(fn.updateStudy, studyId);
+  const [v, setV] = useState(value);
+  const dirty = v.trim() !== value.trim();
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); save.mutate({ id: studyId, stance_target: v.trim() || null }); }} className="mt-6 max-w-2xl">
+      <label className="block">
+        <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">¿Postura frente a qué?</span>
+        <div className="mt-1 flex gap-2">
+          <input value={v} onChange={(e) => setV(e.target.value)} maxLength={300} placeholder="la gestión de la gobernadora" className="min-w-0 flex-1 border-b border-foreground bg-transparent py-2 text-lg outline-none focus:border-accent" />
+          {dirty && <button disabled={save.isPending} className="border border-foreground px-3 text-sm hover:bg-secondary disabled:opacity-50">{save.isPending ? "Guardando…" : "Guardar"}</button>}
+        </div>
+      </label>
+      <p className="mt-1 text-xs text-muted-foreground">Define un objeto concreto: una persona, decisión o propuesta. Si lo dejas vacío, solo se mide sentimiento. Se aplica en el próximo análisis.</p>
+      {save.error && <p className="mt-1 text-xs text-destructive">{save.error.message}</p>}
+    </form>
   );
 }
 

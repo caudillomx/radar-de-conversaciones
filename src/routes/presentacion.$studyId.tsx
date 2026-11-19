@@ -403,6 +403,32 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
     </Body>
   ) });
 
+  // Stance (only when the study defines a target)
+  const st = r.stance;
+  if (st) S.push({ section: "Postura", node: (
+    <Body>
+      <div><Head k={k("Postura")} title={`Postura frente a: ${st.target}`} /><p className="mt-2 text-xl text-muted-foreground">{st.no_aplica}% no se refiere al objeto · n base {st.n_base.toLocaleString("es-MX")} · margen de error al 95%</p></div>
+      <div className="grid flex-1 grid-cols-2 gap-10">
+        <div className="space-y-4">
+          {([["favor", "A favor", "bg-success", "text-success"], ["contra", "En contra", "bg-destructive", "text-destructive"], ["ambigua", "Ambigua", "bg-muted-foreground", "text-muted-foreground"]] as const).map(([key, l, bar, c]) => (
+            <div key={key} className="flex items-center gap-5 rounded-2xl border border-border bg-background px-6 py-5"><span className={`h-10 w-3 rounded-full ${bar}`} /><span className="flex-1 text-2xl font-bold">{l}</span><span className="text-lg text-muted-foreground">±{st[key].moe} pts</span><span className={`w-32 text-right text-5xl font-bold ${c}`}>{Math.round(st[key].share)}%</span></div>
+          ))}
+          <Lectura title="Nota">La postura se mide aparte del sentimiento: un comentario puede tener tono negativo y estar a favor.</Lectura>
+        </div>
+        <Panel className="space-y-5">
+          <p className="text-sm font-bold uppercase tracking-[0.3em] text-primary">Por plataforma</p>
+          {st.by_platform.map((p) => (
+            <div key={p.platform}>
+              <div className="flex justify-between text-lg"><span className="font-bold">{PLATFORMS[p.platform as Platform]?.label ?? p.platform}</span><span className="text-muted-foreground">n={p.n_base}</span></div>
+              <div className="mt-2 flex h-5 overflow-hidden rounded-full bg-background"><div className="bg-success" style={{ width: `${p.favor.share}%` }} /><div className="bg-destructive" style={{ width: `${p.contra.share}%` }} /><div className="bg-muted-foreground" style={{ width: `${p.ambigua.share}%` }} /></div>
+              <p className="mt-1 text-base text-muted-foreground">A favor {Math.round(p.favor.share)}% · En contra {Math.round(p.contra.share)}% · Ambigua {Math.round(p.ambigua.share)}%</p>
+            </div>
+          ))}
+        </Panel>
+      </div>
+    </Body>
+  ) });
+
   // Methodology
   const m = r.methodology ?? { collected: r.total_comments, sources: [], sampling: `Se analizaron ${r.analyzed_comments.toLocaleString("es-MX")} de ${r.total_comments.toLocaleString("es-MX")} comentarios, priorizando los de mayor interacción.`, classified: n, synthesized: r.analyzed_comments, limitations: ["Solo se observa lo que cada red muestra públicamente."] };
   S.push({ section: "Metodología", node: (
