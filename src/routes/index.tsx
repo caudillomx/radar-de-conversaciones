@@ -87,9 +87,9 @@ function Home() {
             ) : (
               <ul className="mt-4 divide-y divide-border border-y border-foreground">
                 {pulses.map((s) => (
-                  <li key={s.id} className="flex items-center gap-3 py-4">
-                    <div className="flex -space-x-2">{s.sources.map((x) => <PlatformMark key={x.id} platform={x.platform as Platform} className="bg-background" />)}</div>
-                    <Link to="/estudios/$studyId" params={{ studyId: s.id }} className="min-w-0 flex-1 truncate hover:text-accent">{s.title}</Link>
+                  <li key={s.id} className="flex items-start gap-3 py-4">
+                    <div className="flex -space-x-2 pt-1">{s.sources.map((x) => <PlatformMark key={x.id} platform={x.platform as Platform} className="bg-background" />)}</div>
+                    <PulseSummary s={s} />
                     <button onClick={() => del.mutate({ id: s.id })} className="font-mono text-xs uppercase text-muted-foreground hover:text-destructive">Quitar</button>
                   </li>
                 ))}
@@ -100,12 +100,29 @@ function Home() {
           <section className="border border-foreground p-8">
             <p className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">Nivel Deep Dive</p>
             <h2 className="mt-2 font-display text-5xl">Estudio Profundo</h2>
-            <p className="mt-3 text-muted-foreground">Múltiples URLs y redes agrupadas por tema, cliente o campaña. Rigor metodológico, presentación, reporte PDF y Social Lead Pack.</p>
+            <p className="mt-3 text-muted-foreground">Múltiples URLs y redes agrupadas por tema, cliente o campaña. Rigor metodológico, gráficas, perfil inferido y presentación descargable.</p>
             <p className="mt-6 font-mono text-sm">{deep.length} estudios activos</p>
             <Link to="/estudios" className="mt-4 inline-block bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-accent">Abrir o crear estudio →</Link>
           </section>
         </div>
       </main>
     </div>
+  );
+}
+
+type PulseRow = Awaited<ReturnType<typeof fn.listStudies>>[number];
+function PulseSummary({ s }: { s: PulseRow }) {
+  const a = [...(s.analyses ?? [])].filter((x) => x.status === "completado").sort((x, y) => y.created_at.localeCompare(x.created_at))[0];
+  const sent = a?.sentiment as { positive: number; neutral: number; negative: number } | null | undefined;
+  const comments = s.sources.reduce((n, x) => n + (x.comment_count ?? 0), 0);
+  const mood = sent ? (sent.negative > sent.positive + 10 ? ["Negativo", "text-destructive"] : sent.positive > sent.negative + 10 ? ["Positivo", "text-success"] : ["Dividido", "text-accent"]) : null;
+  return (
+    <Link to="/estudios/$studyId" params={{ studyId: s.id }} className="group min-w-0 flex-1">
+      <p className="truncate font-display text-xl group-hover:text-accent">{s.topic || (a?.headline as string | undefined) || "Aún sin analizar"}</p>
+      {s.topic && a?.headline && <p className="line-clamp-2 text-sm text-muted-foreground">{a.headline as string}</p>}
+      <p className="mt-1 font-mono text-[11px] uppercase text-muted-foreground">
+        {s.title.replace(/^Pulso · /, "")} · {comments.toLocaleString("es-MX")} comentarios{mood && <> · <span className={mood[1]}>{mood[0]}</span></>}
+      </p>
+    </Link>
   );
 }

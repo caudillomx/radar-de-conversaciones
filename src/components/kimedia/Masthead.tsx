@@ -12,9 +12,10 @@ export function Masthead({ mode }: { mode?: "quick" | "deep" | undefined } = {})
           <span aria-hidden="true" className="text-accent">·</span>
           <span className="font-mono text-xs text-muted-foreground">KiMedia Intelligence</span>
         </Link>
-        <nav className="flex gap-6">
+        <nav className="flex flex-wrap gap-6">
           <Link to="/" className={`${nav} ${mode === "quick" ? active.className : ""}`} activeProps={active} activeOptions={{ exact: true }}>⚡ Escucha Rápida</Link>
           <Link to="/estudios" className={nav} activeProps={mode === "quick" ? {} : active}>Estudios Profundos</Link>
+          <Link to="/metodologia" className={nav} activeProps={active}>Metodología</Link>
         </nav>
       </div>
     </header>

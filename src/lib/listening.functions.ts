@@ -13,7 +13,7 @@ const must = <T,>(r: { data: T; error: { message: string } | null }): NonNullabl
 
 export const listStudies = createServerFn({ method: "GET" }).handler(async () => {
   const s = await db();
-  return must(await s.from("studies").select("*, sources(id, platform, status, comment_count)").order("created_at", { ascending: false }));
+  return must(await s.from("studies").select("*, sources(id, platform, status, comment_count), analyses(status, created_at, headline:result->>headline, sentiment:result->sentiment)").order("created_at", { ascending: false }));
 });
 
 export const getStudy = createServerFn({ method: "GET" })
@@ -132,7 +132,7 @@ export const syncExtraction = createServerFn({ method: "POST" })
       chk(await s.from("sources").update({ comment_count: count }).eq("id", src.id).eq("apify_run_id", run.id));
       return { status: "extrayendo", apifyStatus: run.status, ingested: fresh.length, collected: count, message: run.statusMessage ?? null };
     }
-    const fin = rows.length === 0 && items.length > 0 ? { status: "error", error: "Apify devolvió datos, pero ninguno parece un comentario" } : { status: "extraida", error: null };
+    const fin = rows.length === 0 && items.length > 0 ? { status: "error", error: "La fuente devolvió datos, pero ninguno parece un comentario" } : { status: "extraida", error: null };
     chk(await s.from("sources").update({ ...fin, comment_count: count, finished_at: new Date().toISOString() }).eq("id", src.id).eq("apify_run_id", run.id));
     return { status: fin.status, apifyStatus: run.status, ingested: rows.length };
   });
@@ -151,7 +151,6 @@ export const listComments = createServerFn({ method: "GET" })
 
 /* ---------- AI analysis ---------- */
 
-const MAX_FOR_AI = 400;
 
 export const getLatestAnalysis = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ studyId: z.string().uuid() }).parse(d))
@@ -168,47 +167,134 @@ export const getLatestAnalysis = createServerFn({ method: "GET" })
     return r.data;
   });
 
+type Row = { author: string | null; text: string; likes: number; is_reply: boolean; url: string | null; published_at: string | null; platform: string };
+
+/** Stratified by platform, keeping high-impact comments plus a random spread. */
+function stratified(rows: Row[], n: number) {
+  if (rows.length <= n) return rows;
+  const by = new Map<string, Row[]>();
+  rows.forEach((r) => by.set(r.platform, [...(by.get(r.platform) ?? []), r]));
+  const out: Row[] = [];
+  for (const group of by.values()) {
+    const quota = Math.max(1, Math.round((group.length / rows.length) * n));
+    const sorted = [...group].sort((a, b) => b.likes - a.likes);
+    const top = sorted.slice(0, Math.ceil(quota * 0.3));
+    const rest = sorted.slice(top.length).sort(() => Math.random() - 0.5).slice(0, quota - top.length);
+    out.push(...top, ...rest);
+  }
+  return out.slice(0, n);
+}
+const pct = (counts: Record<string, number>) => {
+  const t = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ key: k, count: v, share: Math.round((v / t) * 1000) / 10 }));
+};
+const tally = <T,>(xs: T[], f: (x: T) => string) => xs.reduce<Record<string, number>>((m, x) => { const k = f(x); m[k] = (m[k] ?? 0) + 1; return m; }, {});
+const line = (c: Row, i: number) => `[${i}] (${c.platform}${c.is_reply ? ", respuesta" : ""}, ${c.likes} likes, autor: ${c.author ?? "?"}) ${c.text.replace(/\s+/g, " ").slice(0, 350)}`;
+
+export const CLASSIFY_MAX = 2000;
+const BATCH = 250;
+const SYNTH_MAX = 400;
+
 export const analyzeStudy = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ studyId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
-    const { runAnalysis, ANALYSIS_MODEL } = await import("./ai/analysis.server");
+    const { runSynthesis, classifyBatch, ANALYSIS_MODEL } = await import("./ai/analysis.server");
     const s = await db();
-    const study = must(await s.from("studies").select("title, topic").eq("id", data.studyId).single());
+    const study = must(await s.from("studies").select("title, topic, kind, sources(platform, url, max_comments, comment_count, started_at, finished_at)").eq("id", data.studyId).single());
     chk(await s.from("analyses").update({ status: "error", error: ANALYSIS_EXPIRED_MESSAGE, finished_at: new Date().toISOString() }).eq("study_id", data.studyId).eq("status", "procesando").lte("created_at", new Date(Date.now() - ANALYSIS_TIMEOUT_MS).toISOString()));
     const busy = await s.from("analyses").select("id").eq("study_id", data.studyId).eq("status", "procesando").limit(1);
     if (busy.error) throw new Error(busy.error.message);
     if (busy.data?.length) throw new Error("Ya hay un análisis en curso para este estudio.");
-    const cr = await s.from("comments").select("author, text, likes, is_reply, url, published_at, sources!inner(study_id, platform)")
-      .eq("sources.study_id", data.studyId).order("likes", { ascending: false }).limit(MAX_FOR_AI);
-    if (cr.error) throw new Error(cr.error.message);
-    const comments = cr.data;
-    if (comments.length < 5) throw new Error("Se necesitan al menos 5 comentarios extraídos para analizar.");
-    const total = (await s.from("comments").select("id, sources!inner(study_id)", { count: "exact", head: true }).eq("sources.study_id", data.studyId)).count ?? comments.length;
 
-    const row = must(await s.from("analyses").insert({ study_id: data.studyId, model: ANALYSIS_MODEL, comment_count: comments.length }).select("id, created_at").single());
-    // Expire the stored attempt, without aborting billed upstream generation.
+    const all: Row[] = [];
+    for (let from = 0; from < 20000; from += 1000) {
+      const r = await s.from("comments").select("author, text, likes, is_reply, url, published_at, sources!inner(study_id, platform)")
+        .eq("sources.study_id", data.studyId).order("likes", { ascending: false }).range(from, from + 999);
+      if (r.error) throw new Error(r.error.message);
+      all.push(...r.data.map(({ sources, ...c }) => ({ ...c, platform: sources.platform })));
+      if (r.data.length < 1000) break;
+    }
+    if (all.length < 5) throw new Error("Se necesitan al menos 5 comentarios extraídos para analizar.");
+
+    const sample = stratified(all, CLASSIFY_MAX);
+    const synth = [...sample.slice().sort((a, b) => b.likes - a.likes).slice(0, 250)];
+    const synthSet = new Set(synth);
+    synth.push(...sample.filter((c) => !synthSet.has(c)).slice(0, SYNTH_MAX - synth.length));
+
+    const row = must(await s.from("analyses").insert({ study_id: data.studyId, model: ANALYSIS_MODEL, comment_count: sample.length }).select("id, created_at").single());
     const expiryTimer = setTimeout(() => {
       void s.from("analyses").update({ status: "error", error: ANALYSIS_EXPIRED_MESSAGE, finished_at: new Date().toISOString() }).eq("id", row.id).eq("status", "procesando").then(() => {}, () => {});
     }, Math.max(0, ANALYSIS_TIMEOUT_MS - (Date.now() - Date.parse(row.created_at))));
     try {
-      const lines = comments.map((c, i) => `[${i}] (${c.sources.platform}${c.is_reply ? ", respuesta" : ""}, ${c.likes} likes) ${c.text.replace(/\s+/g, " ").slice(0, 400)}`).join("\n");
-      const out = await runAnalysis({ studyTitle: study.title, topic: study.topic, comments: lines });
+      const batches: Row[][] = [];
+      for (let i = 0; i < sample.length; i += BATCH) batches.push(sample.slice(i, i + BATCH));
+      // Synthesis and all classification batches run in parallel to fit the time limit.
+      const [out, ...classified] = await Promise.all([
+        runSynthesis({ studyTitle: study.title, topic: study.topic, comments: synth.map(line).join("\n") }),
+        ...batches.map((b) => classifyBatch(b.map(line).join("\n"))),
+      ]);
       if (isAnalysisExpired(row.created_at)) throw new Error(ANALYSIS_EXPIRED_MESSAGE);
+      const labels = classified.flatMap((list, bi) => list.flatMap((c) => { const r = batches[bi]![c.i]; return r ? [{ ...c, r }] : []; }));
+      const sent = tally(labels, (c) => c.s);
+      const n = labels.length || 1;
+      const sentiment = { positive: Math.round(((sent["pos"] ?? 0) / n) * 100), neutral: 0, negative: Math.round(((sent["neg"] ?? 0) / n) * 100) };
+      sentiment.neutral = Math.max(0, 100 - sentiment.positive - sentiment.negative);
+      const platforms = [...new Set(labels.map((l) => l.r.platform))];
+      const byPlatform = platforms.map((p) => { const ls = labels.filter((l) => l.r.platform === p); const t = tally(ls, (l) => l.s); const k = ls.length || 1;
+        return { platform: p, count: ls.length, positive: Math.round(((t["pos"] ?? 0) / k) * 100), neutral: Math.round(((t["neu"] ?? 0) / k) * 100), negative: Math.round(((t["neg"] ?? 0) / k) * 100) }; });
+      const persons = labels.filter((l) => l.t === "persona");
+      const det = (k: "g" | "a" | "p") => Math.round((persons.filter((l) => l[k] !== "nd").length / (persons.length || 1)) * 100);
+      const days = tally(all.filter((c) => c.published_at), (c) => c.published_at!.slice(0, 10));
+      const likesSorted = all.map((c) => c.likes).sort((a, b) => b - a);
+      const likesTotal = likesSorted.reduce((a, b) => a + b, 0) || 1;
+      const top10 = likesSorted.slice(0, Math.max(1, Math.ceil(all.length * 0.1))).reduce((a, b) => a + b, 0);
       const quote = (i: number | null) => {
-        const c = i != null ? comments[i] : undefined;
-        return c ? { text: c.text, author: c.author, likes: c.likes, platform: c.sources.platform, url: c.url, is_reply: c.is_reply } : null;
+        const c = i != null ? synth[i] : undefined;
+        return c ? { text: c.text, author: c.author, likes: c.likes, platform: c.platform, url: c.url, is_reply: c.is_reply } : null;
       };
+      const dates = all.flatMap((c) => (c.published_at ? [c.published_at] : [])).sort();
       const result = {
         ...out,
-        total_comments: total,
-        analyzed_comments: comments.length,
+        sentiment,
+        total_comments: all.length,
+        analyzed_comments: synth.length,
+        classified_comments: labels.length,
         narratives: out.narratives.map((n) => ({ ...n, examples: n.example_ids.map(quote).filter(Boolean) })),
         archetypes: out.archetypes.map((a) => ({ ...a, example: quote(a.example_id) })),
         verbatims: out.verbatims.flatMap((v) => { const q = quote(v.id); return q ? [{ ...q, why: v.why }] : []; }).sort((a, b) => b.likes - a.likes),
+        stats: {
+          timeline: Object.entries(days).sort().map(([day, count]) => ({ day, count })),
+          by_platform: byPlatform,
+          likes_top10_share: Math.round((top10 / likesTotal) * 100),
+          reply_share: Math.round((all.filter((c) => c.is_reply).length / all.length) * 100),
+        },
+        demographics: {
+          persons: persons.length,
+          account_type: pct(tally(labels, (l) => l.t)),
+          gender: pct(tally(persons, (l) => l.g)),
+          age: pct(tally(persons, (l) => l.a)),
+          language: pct(tally(labels, (l) => l.l.toLowerCase())).slice(0, 6),
+          country: pct(tally(persons.filter((l) => l.p !== "nd"), (l) => l.p.toUpperCase())).slice(0, 8),
+          determinable: { gender: det("g"), age: det("a"), country: det("p") },
+        },
+        methodology: {
+          generated_at: new Date().toISOString(),
+          sources: study.sources.map((x) => ({ platform: x.platform, url: x.url, target: x.max_comments, collected: x.comment_count, finished_at: x.finished_at })),
+          period: dates.length ? { from: dates[0], to: dates[dates.length - 1] } : null,
+          collected: all.length,
+          classified: labels.length,
+          classify_requested: sample.length,
+          synthesized: synth.length,
+          sampling: all.length > sample.length
+            ? `Muestra estratificada por plataforma de ${sample.length.toLocaleString("es-MX")} de ${all.length.toLocaleString("es-MX")} comentarios (30% de mayor interacción + 70% aleatorio en cada red).`
+            : `Censo: se clasificaron todos los comentarios recolectados (${all.length.toLocaleString("es-MX")}).`,
+          limitations: out.limitations,
+        },
       };
       const saved = await s.from("analyses").update({ status: "completado", result: result as never, finished_at: new Date().toISOString() }).eq("id", row.id).eq("status", "procesando").select("id").maybeSingle();
       chk(saved);
       if (!saved.data) throw new Error(ANALYSIS_EXPIRED_MESSAGE);
+      if (!study.topic && out.topic_label) await s.from("studies").update({ topic: out.topic_label.slice(0, 200) }).eq("id", data.studyId);
       return { id: row.id };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error desconocido";

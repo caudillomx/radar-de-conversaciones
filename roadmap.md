@@ -1,11 +1,12 @@
 - [x] Cambiar el análisis a Gemini 3.8 Flash y verificarlo con comentarios reales.
 - [x] Expirar análisis a los dos minutos, habilitar reintento y proteger contra resultados tardíos.
 - [x] Mostrar el conteo parcial real durante la extracción frente al objetivo configurado (incluidos 5,000).
-- [x] Verificar la actualización en vivo y la persistencia de comentarios sin duplicados.- [ ] Análisis por lotes de todos los comentarios con progreso real.
-- [ ] Perfil demográfico inferido con nivel de confianza.
-- [ ] Nuevas gráficas.
-- [ ] Quitar menciones de herramientas.
-- [ ] Pulsos recientes con tema y resumen.
-- [ ] Metodología explícita en informe y página.
-- [ ] Quitar hooks para redes.
-- [ ] PDF de Escucha Rápida en formato presentación horizontal estilo Wizr (no A4).
+- [x] Verificar la actualización en vivo y la persistencia de comentarios sin duplicados.
+- [x] Análisis por lotes en paralelo (hasta 2,000 comentarios clasificados).
+- [x] Perfil demográfico inferido con nivel de confianza.
+- [x] Nuevas gráficas.
+- [x] Quitar menciones de herramientas.
+- [x] Pulsos recientes con tema y resumen.
+- [x] Metodología explícita en informe y página.
+- [x] Quitar hooks para redes.
+- [ ] Ajustar la presentación al estilo exacto de Wizr (esperando la referencia del usuario).

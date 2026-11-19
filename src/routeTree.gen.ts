@@ -10,12 +10,19 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as MetodologiaRouteImport } from './routes/metodologia'
 import { Route as EstudiosIndexRouteImport } from './routes/estudios.index'
 import { Route as EstudiosStudyIdRouteImport } from './routes/estudios.$studyId'
+import { Route as PresentacionStudyIdRouteImport } from './routes/presentacion.$studyId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetodologiaRoute = MetodologiaRouteImport.update({
+  id: '/metodologia',
+  path: '/metodologia',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EstudiosIndexRoute = EstudiosIndexRouteImport.update({
@@ -28,34 +35,63 @@ const EstudiosStudyIdRoute = EstudiosStudyIdRouteImport.update({
   path: '/estudios/$studyId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PresentacionStudyIdRoute = PresentacionStudyIdRouteImport.update({
+  id: '/presentacion/$studyId',
+  path: '/presentacion/$studyId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/metodologia': typeof MetodologiaRoute
   '/estudios/$studyId': typeof EstudiosStudyIdRoute
+  '/presentacion/$studyId': typeof PresentacionStudyIdRoute
   '/estudios/': typeof EstudiosIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/metodologia': typeof MetodologiaRoute
   '/estudios/$studyId': typeof EstudiosStudyIdRoute
+  '/presentacion/$studyId': typeof PresentacionStudyIdRoute
   '/estudios': typeof EstudiosIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/metodologia': typeof MetodologiaRoute
   '/estudios/$studyId': typeof EstudiosStudyIdRoute
+  '/presentacion/$studyId': typeof PresentacionStudyIdRoute
   '/estudios/': typeof EstudiosIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/estudios/$studyId' | '/estudios/'
+  fullPaths:
+    | '/'
+    | '/metodologia'
+    | '/estudios/$studyId'
+    | '/presentacion/$studyId'
+    | '/estudios/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/estudios/$studyId' | '/estudios'
-  id: '__root__' | '/' | '/estudios/$studyId' | '/estudios/'
+  to:
+    | '/'
+    | '/metodologia'
+    | '/estudios/$studyId'
+    | '/presentacion/$studyId'
+    | '/estudios'
+  id:
+    | '__root__'
+    | '/'
+    | '/metodologia'
+    | '/estudios/$studyId'
+    | '/presentacion/$studyId'
+    | '/estudios/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  MetodologiaRoute: typeof MetodologiaRoute
   EstudiosStudyIdRoute: typeof EstudiosStudyIdRoute
+  PresentacionStudyIdRoute: typeof PresentacionStudyIdRoute
   EstudiosIndexRoute: typeof EstudiosIndexRoute
 }
 
@@ -66,6 +102,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/metodologia': {
+      id: '/metodologia'
+      path: '/metodologia'
+      fullPath: '/metodologia'
+      preLoaderRoute: typeof MetodologiaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/estudios/': {
@@ -82,12 +125,21 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EstudiosStudyIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/presentacion/$studyId': {
+      id: '/presentacion/$studyId'
+      path: '/presentacion/$studyId'
+      fullPath: '/presentacion/$studyId'
+      preLoaderRoute: typeof PresentacionStudyIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  MetodologiaRoute: MetodologiaRoute,
   EstudiosStudyIdRoute: EstudiosStudyIdRoute,
+  PresentacionStudyIdRoute: PresentacionStudyIdRoute,
   EstudiosIndexRoute: EstudiosIndexRoute,
 }
 export const routeTree = rootRouteImport

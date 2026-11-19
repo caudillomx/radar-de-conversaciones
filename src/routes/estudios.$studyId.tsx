@@ -47,7 +47,7 @@ function StudyPage() {
   const markReady = useListeningMutation(fn.updateSource, studyId);
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  // Poll Apify for every running source.
+  // Poll extraction for every running source.
   const sync = useServerFn(fn.syncExtraction);
   const running = study?.sources.filter((s) => RUNNING.has(s.status)).map((s) => s.id).join(",") ?? "";
   useEffect(() => {
@@ -186,11 +186,11 @@ function StudyPage() {
           )}
           <button onClick={() => start.mutate({ sourceIds: ready.map((s) => s.id) })} disabled={!ready.length || start.isPending}
             className="mt-3 w-full bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-40">
-            {start.isPending ? "Iniciando…" : runningCount ? "Extracción en curso…" : `Extraer comentarios con Apify${ready.length ? ` (${ready.length})` : ""}`}
+            {start.isPending ? "Iniciando…" : runningCount ? "Extracción en curso…" : `Extraer comentarios${ready.length ? ` (${ready.length})` : ""}`}
           </button>
           {start.error && <p className="mt-2 text-xs text-destructive">{start.error.message}</p>}
           {syncError && <p className="mt-2 text-xs text-destructive">{syncError} Recarga la página para volver a consultar el progreso.</p>}
-          <p className="mt-2 text-xs text-muted-foreground">Cada fuente usa un Actor especializado de Apify según su red. Las extracciones pueden tardar de 1 a 5 minutos.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Cada fuente usa un extractor especializado según su red. Las extracciones pueden tardar de 1 a 5 minutos.</p>
         </aside>
       </div>
     </Shell>

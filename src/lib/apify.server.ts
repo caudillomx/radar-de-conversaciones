@@ -5,8 +5,8 @@ const GATEWAY = "https://connector-gateway.lovable.dev/apify";
 function headers() {
   const lovable = process.env["LOVABLE_API_KEY"];
   const apify = process.env["APIFY_API_KEY"];
-  if (!lovable) throw new Error("LOVABLE_API_KEY no está configurada");
-  if (!apify) throw new Error("La conexión de Apify no está vinculada");
+  if (!lovable) throw new Error("El motor de extracción no está configurado");
+  if (!apify) throw new Error("El motor de extracción no está vinculado");
   return { Authorization: `Bearer ${lovable}`, "X-Connection-Api-Key": apify, "Content-Type": "application/json" };
 }
 
@@ -15,13 +15,9 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     const body = await res.text();
     console.error(`Apify ${path} [${res.status}]: ${body}`);
-    const msg = safeMsg(body);
-    throw new Error(res.status === 402 ? `Apify sin saldo o plan insuficiente: ${msg}` : res.status === 429 ? "Apify: límite de peticiones alcanzado, intenta en un momento" : `Apify [${res.status}]: ${msg}`);
+        throw new Error(res.status === 402 ? "El motor de extracción no tiene saldo suficiente" : res.status === 429 ? "El motor de extracción está saturado, intenta en un momento" : `Error del motor de extracción (${res.status})`);
   }
   return res.json() as Promise<T>;
-}
-function safeMsg(body: string) {
-  try { return JSON.parse(body)?.error?.message ?? body.slice(0, 200); } catch { return body.slice(0, 200); }
 }
 
 /** Specialized Actor per platform. */

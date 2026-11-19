@@ -5,22 +5,13 @@ import { PLATFORMS, type Platform } from "@/lib/platforms";
 import { PlatformMark } from "./PlatformMark";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Link } from "@tanstack/react-router";
+import type { AnalysisResult as Result, Quote } from "@/lib/analysis-types";
+import { DistBars, NarrativeMap, PlatformSentiment, SentimentBar, StatTile, Timeline } from "./charts";
+import { Methodology } from "./Methodology";
 import { ANALYSIS_TIMEOUT_MS, ANALYSIS_EXPIRED_MESSAGE } from "@/lib/analysis-lifecycle";
 
-type Quote = { text: string; author: string | null; likes: number; platform: string; url: string | null; is_reply: boolean };
-type Result = {
-  headline: string; executive_summary: string; total_comments: number; analyzed_comments: number;
-  temperature: { score: number; label: string; summary: string };
-  sentiment: { positive: number; neutral: number; negative: number };
-  narratives: { title: string; description: string; traction: "alta" | "media" | "baja"; share: number; sentiment: string; examples: Quote[] }[];
-  archetypes: { name: string; description: string; stance: string; tone: string; arguments: string[]; share: number; example: Quote | null }[];
-  verbatims: (Quote & { why: string })[];
-  keywords: { term: string; weight: number }[];
-  hooks: { channel: "linkedin" | "x" | "carrusel"; text: string }[];
-};
-
-const STEPS = ["Leyendo comentarios", "Midiendo sentimiento", "Agrupando narrativas", "Infiriendo arquetipos", "Seleccionando citas", "Redactando hooks"];
-const CHANNEL = { linkedin: "LinkedIn", x: "X", carrusel: "Carrusel" };
+const STEPS = ["Leyendo comentarios", "Midiendo sentimiento", "Agrupando narrativas", "Infiriendo arquetipos", "Perfilando participantes", "Seleccionando citas"];
 
 export function AnalysisPanel({ studyId, commentCount, quick }: { studyId: string; commentCount: number; quick: boolean }) {
   const qc = useQueryClient();
@@ -52,12 +43,15 @@ export function AnalysisPanel({ studyId, commentCount, quick }: { studyId: strin
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-accent">{quick ? "Alerta rápida" : "03 — Informe de inteligencia"}</h2>
-          {r && analysis && <p className="mt-1 font-mono text-[11px] text-muted-foreground">{r.analyzed_comments} de {r.total_comments} comentarios · {new Date(analysis.created_at).toLocaleString("es-MX")}</p>}
+          {r && analysis && <p className="mt-1 font-mono text-[11px] text-muted-foreground">{(r.classified_comments ?? r.analyzed_comments).toLocaleString("es-MX")} de {r.total_comments.toLocaleString("es-MX")} comentarios analizados · {new Date(analysis.created_at).toLocaleString("es-MX")}</p>}
         </div>
+        <div className="flex flex-wrap gap-2">
+        {r && !busy && <Button asChild variant="outline" className="rounded-none px-5 py-2.5"><Link to="/presentacion/$studyId" params={{ studyId }}>Descargar presentación (PDF)</Link></Button>}
         <Button onClick={() => { run.reset(); setStartedAt(Date.now()); setNow(Date.now()); run.mutate({ studyId }); }} disabled={busy || commentCount < 5}
           className="rounded-none px-5 py-2.5 hover:bg-accent">
           {busy ? "Analizando…" : err ? "Reintentar análisis" : r ? "Volver a analizar" : "✦ Analizar con IA"}
         </Button>
+        </div>
       </div>
 
       {busy && (
@@ -84,13 +78,18 @@ function Report({ r, quick }: { r: Result; quick: boolean }) {
         <p className="mt-3 max-w-3xl text-lg text-muted-foreground">{r.executive_summary}</p>
       </div>
 
+      {r.stats && (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <StatTile value={r.total_comments.toLocaleString("es-MX")} label="Comentarios recolectados" />
+          <StatTile value={(r.classified_comments ?? r.analyzed_comments).toLocaleString("es-MX")} label="Comentarios clasificados" />
+          <StatTile value={`${r.stats.likes_top10_share}%`} label="Likes en el 10% más popular" />
+          <StatTile value={`${r.stats.reply_share}%`} label="Son respuestas a otros" />
+        </div>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2">
         <Card title="Sentimiento">
-          <div className="flex h-4 w-full overflow-hidden">
-            <div className="bg-success" style={{ width: `${r.sentiment.positive}%` }} />
-            <div className="bg-muted-foreground/40" style={{ width: `${r.sentiment.neutral}%` }} />
-            <div className="bg-destructive" style={{ width: `${r.sentiment.negative}%` }} />
-          </div>
+          <SentimentBar s={r.sentiment} />
           <dl className="mt-4 grid grid-cols-3 gap-2">
             {([["Positivo", r.sentiment.positive, "text-success"], ["Neutro", r.sentiment.neutral, "text-muted-foreground"], ["Negativo", r.sentiment.negative, "text-destructive"]] as const).map(([k, v, c]) => (
               <div key={k}><dt className="font-mono text-[11px] uppercase text-muted-foreground">{k}</dt><dd className={`font-display text-4xl ${c}`}>{Math.round(v)}%</dd></div>
@@ -106,8 +105,16 @@ function Report({ r, quick }: { r: Result; quick: boolean }) {
         </Card>
       </div>
 
+      {r.stats && (
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card title="Volumen de comentarios en el tiempo"><Timeline data={r.stats.timeline} /></Card>
+          <Card title="Sentimiento por plataforma"><PlatformSentiment data={r.stats.by_platform} /></Card>
+        </div>
+      )}
+
       <div>
         <SectionTitle>Narrativas dominantes</SectionTitle>
+        <div className="mb-6"><NarrativeMap r={r} /></div>
         <div className="divide-y divide-border border-y border-foreground">
           {r.narratives.map((n, i) => (
             <details key={i} className="group py-4" open={i === 0}>
@@ -160,32 +167,34 @@ function Report({ r, quick }: { r: Result; quick: boolean }) {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-[1fr_1.4fr]">
-        <Card title="Conceptos más repetidos">
-          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-            {r.keywords.map((k) => (
-              <span key={k.term} className="font-display leading-none" style={{ fontSize: `${14 + (k.weight / 100) * 26}px`, opacity: 0.45 + (k.weight / 100) * 0.55 }}>{k.term}</span>
-            ))}
-          </div>
-        </Card>
-        <Card title="Hooks sociales">
-          <ul className="space-y-3">
-            {r.hooks.map((h, i) => <Hook key={i} channel={CHANNEL[h.channel]} text={h.text} />)}
-          </ul>
-        </Card>
-      </div>
+      {r.demographics && <Demographics d={r.demographics} />}
+
+      <Card title="Conceptos más repetidos">
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+          {r.keywords.map((k) => (
+            <span key={k.term} className="font-display leading-none" style={{ fontSize: `${14 + (k.weight / 100) * 26}px`, opacity: 0.45 + (k.weight / 100) * 0.55 }}>{k.term}</span>
+          ))}
+        </div>
+      </Card>
+
+      {r.methodology && <Methodology m={r.methodology} />}
     </div>
   );
 }
 
-function Hook({ channel, text }: { channel: string; text: string }) {
-  const [copied, setCopied] = useState(false);
+function Demographics({ d }: { d: NonNullable<Result["demographics"]> }) {
   return (
-    <li className="flex gap-3 border-b border-border pb-3 last:border-0">
-      <span className="w-20 shrink-0 font-mono text-[11px] uppercase text-accent">{channel}</span>
-      <p className="flex-1 text-sm">{text}</p>
-      <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="shrink-0 font-mono text-[11px] uppercase text-muted-foreground hover:text-accent">{copied ? "Copiado" : "Copiar"}</button>
-    </li>
+    <div>
+      <SectionTitle>Perfil inferido de participantes</SectionTitle>
+      <p className="mb-4 max-w-3xl text-sm text-muted-foreground">Estimación, no dato declarado: se infiere del nombre de usuario, el idioma y la forma de escribir de {d.persons.toLocaleString("es-MX")} cuentas personales. Género determinable en {d.determinable.gender}% · edad en {d.determinable.age}% · país en {d.determinable.country}%.</p>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <Card title="Género probable"><DistBars data={d.gender} /></Card>
+        <Card title="Edad probable"><DistBars data={[...d.age].sort((a, b) => a.key.localeCompare(b.key))} /></Card>
+        <Card title="Tipo de cuenta"><DistBars data={d.account_type} color="bg-accent" /></Card>
+        <Card title="Idioma"><DistBars data={d.language} color="bg-accent" /></Card>
+        <Card title="País probable (con indicios)"><DistBars data={d.country} /></Card>
+      </div>
+    </div>
   );
 }
 function MiniQuote({ q }: { q: Quote }) {
