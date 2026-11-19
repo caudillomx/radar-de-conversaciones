@@ -1,4 +1,11 @@
 - [x] Cambiar el análisis a Gemini 3.8 Flash y verificarlo con comentarios reales.
 - [x] Expirar análisis a los dos minutos, habilitar reintento y proteger contra resultados tardíos.
 - [x] Mostrar el conteo parcial real durante la extracción frente al objetivo configurado (incluidos 5,000).
-- [x] Verificar la actualización en vivo y la persistencia de comentarios sin duplicados.
+- [x] Verificar la actualización en vivo y la persistencia de comentarios sin duplicados.- [ ] Análisis por lotes de todos los comentarios con progreso real.
+- [ ] Perfil demográfico inferido con nivel de confianza.
+- [ ] Nuevas gráficas.
+- [ ] Quitar menciones de herramientas.
+- [ ] Pulsos recientes con tema y resumen.
+- [ ] Metodología explícita en informe y página.
+- [ ] Quitar hooks para redes.
+- [ ] PDF de Escucha Rápida.
