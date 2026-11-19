@@ -26,8 +26,10 @@
 ## 7. Quitar hooks para redes
 - Eliminar la sección de hooks del análisis, del informe y del prompt.
 
-## 8. PDF de Escucha Rápida
-- Botón "Descargar PDF" A4 con portada co-marcada WIZR · KiMedia, resumen, gráficas, narrativas, arquetipos, citas, perfil demográfico y metodología. Reutilizable para Estudio Profundo.
+## 8. PDF de Escucha Rápida en formato presentación
+- Botón "Descargar presentación (PDF)": diapositivas horizontales 16:9 con el look and feel de las presentaciones de Wizr, co-marca WIZR · KiMedia.
+- Una idea por diapositiva: portada, titular y resumen, sentimiento y temperatura, gráficas, una por narrativa, arquetipos, citas destacadas, perfil demográfico, metodología y cierre.
+- Mismo formato reutilizable para Estudio Profundo y para el Modo Presentación en pantalla.
 
 ## Sugerencias adicionales (lo que podría faltar)
 - Comparar dos pulsos o un mismo tema en el tiempo.
@@ -37,4 +39,4 @@
 ## Detalles técnicos
 - Nuevas columnas en `analyses` (topic_label, methodology jsonb, demographics jsonb, batches_done/total).
 - Análisis por lotes en servidor con guardado incremental; la expiración de 2 min pasa a ser por lote.
-- PDF generado en el navegador a partir del informe para no depender del servidor.
+- Diapositivas 1920x1080 renderizadas en una vista de impresión y exportadas a PDF en el navegador.

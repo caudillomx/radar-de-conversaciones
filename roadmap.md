@@ -8,4 +8,4 @@
 - [ ] Pulsos recientes con tema y resumen.
 - [ ] Metodología explícita en informe y página.
 - [ ] Quitar hooks para redes.
-- [ ] PDF de Escucha Rápida.
+- [ ] PDF de Escucha Rápida en formato presentación horizontal estilo Wizr (no A4).
