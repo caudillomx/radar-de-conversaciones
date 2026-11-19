@@ -193,7 +193,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
     const path = pts.map(([x, y], i) => `${i ? "L" : "M"}${x},${y}`).join(" ");
     const pk = pts[tl.indexOf(peak)]!;
     const f = (d: string) => new Date(d + "T12:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "short" });
-    S.push({ section: "Timeline", node: (
+    if (!quick) S.push({ section: "Timeline", node: (
       <Body>
         <div className="flex items-end justify-between"><Head k={k("Volumen en el tiempo")} title="Evolución diaria" />
           <div className="flex gap-12 text-right"><div><p className="text-sm font-bold uppercase tracking-[0.25em] text-muted-foreground">Comentarios</p><p className="text-5xl font-bold">{r.total_comments.toLocaleString("es-MX")}</p></div><div><p className="text-sm font-bold uppercase tracking-[0.25em] text-muted-foreground">Pico</p><p className="text-5xl font-bold text-accent">{max.toLocaleString("es-MX")}</p></div></div></div>
@@ -261,7 +261,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
   ) });
 
   // Vocabulary
-  S.push({ section: "Términos", node: (
+  if (!quick) S.push({ section: "Términos", node: (
     <Body>
       <div><Head k={k("Términos destacados")} title="El vocabulario de la conversación" /><p className="mt-2 text-xl text-muted-foreground">Conceptos más repetidos, dimensionados por frecuencia relativa</p></div>
       <Panel className="flex flex-1 flex-wrap content-center items-center justify-center gap-5 px-16">
@@ -288,7 +288,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
 
   // Platforms
   const bp = r.stats?.by_platform ?? [];
-  if (bp.length) S.push({ section: "Plataformas", node: (
+  if (!quick && bp.length) S.push({ section: "Plataformas", node: (
     <Body>
       <Head k={k("Mix de plataformas")} title="¿Dónde sucede la conversación?" />
       <Panel className="flex flex-1 flex-col justify-center gap-10 px-16">
@@ -305,7 +305,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
   ) });
 
   // Demographics
-  if (r.demographics) { const d = r.demographics; S.push({ section: "Perfil", node: (
+  if (!quick && r.demographics) { const d = r.demographics; S.push({ section: "Perfil", node: (
     <Body>
       <div><Head k={k("Perfil inferido")} title="¿Quién participa?" /><p className="mt-2 text-xl text-muted-foreground">Estimación probabilística sobre {d.persons.toLocaleString("es-MX")} cuentas personales · no es dato declarado</p></div>
       <div className="grid flex-1 grid-cols-3 gap-6">
@@ -324,7 +324,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
 
   // Key takeaways
   const pts = (r.executive_summary.match(/[^.!?]+[.!?]+/g) ?? [r.executive_summary]).map((x) => x.trim()).filter(Boolean).slice(0, 4);
-  S.push({ section: "Hallazgos", node: (
+  if (!quick) S.push({ section: "Hallazgos", node: (
     <Body>
       <Head k={k("Hallazgos clave")} title="Lo más importante del periodo" />
       <div className="space-y-4">
@@ -339,8 +339,8 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
   ) });
 
   // Methodology
-  const m = r.methodology;
-  if (m) S.push({ section: "Metodología", node: (
+  const m = r.methodology ?? { collected: r.total_comments, sources: [], sampling: `Se analizaron ${r.analyzed_comments.toLocaleString("es-MX")} de ${r.total_comments.toLocaleString("es-MX")} comentarios, priorizando los de mayor interacción.`, classified: n, synthesized: r.analyzed_comments, limitations: ["Solo se observa lo que cada red muestra públicamente."] };
+  S.push({ section: "Metodología", node: (
     <Body>
       <div><Head k={k("Metodología")} title="Cómo se construyó este reporte" /><p className="mt-2 text-xl text-muted-foreground">Ficha técnica para sostener y replicar los hallazgos</p></div>
       <div className="grid grid-cols-2 gap-5">
@@ -358,7 +358,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
   ) });
 
   // Closing
-  S.push({ bare: true, node: (
+  if (!quick) S.push({ bare: true, node: (
     <div className="absolute inset-0 overflow-hidden bg-foreground text-background">
       <div className="absolute -left-40 bottom-[-240px] h-[700px] w-[700px] rounded-full bg-primary/40 blur-[120px]" />
       <Star size={140} className="right-40 top-24" /><Star size={60} className="right-[340px] top-56" /><Star size={80} className="right-20 top-72" />
