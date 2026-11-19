@@ -6,7 +6,7 @@ import { Masthead } from "@/components/kimedia/Masthead";
 import { PlatformMark } from "@/components/kimedia/PlatformMark";
 import { AnalysisPanel } from "@/components/kimedia/AnalysisPanel";
 import { PLATFORMS, parseSocialUrl, splitUrls, type Platform } from "@/lib/platforms";
-import { commentsQuery, fn, studyQuery, useListeningMutation, type SourceRow } from "@/lib/listening";
+import { COMMENTS_PAGE, commentsQuery, fn, studyQuery, useListeningMutation, type SourceRow } from "@/lib/listening";
 import { extractionProgress } from "@/lib/extraction-progress";
 
 export const Route = createFileRoute("/estudios/$studyId")({
@@ -250,38 +250,74 @@ function SourceCard({ s, studyId }: { s: SourceRow; studyId: string }) {
 }
 
 function CommentsPanel({ studyId, sources }: { studyId: string; sources: SourceRow[] }) {
+  const [open, setOpen] = useState(false);
   const [sourceId, setSourceId] = useState<string | null>(null);
-  const { data, isLoading } = useQuery(commentsQuery(studyId, sourceId));
-  if (!sources.some((s) => s.comment_count > 0)) return null;
+  const [page, setPage] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const { data, isLoading } = useQuery({ ...commentsQuery(studyId, sourceId, page), enabled: open });
+  const total = sources.reduce((a, s) => a + s.comment_count, 0);
+  if (!total) return null;
+  const pages = Math.max(1, Math.ceil((data?.total ?? 0) / COMMENTS_PAGE));
+  const download = async () => {
+    setExporting(true); setExportError(null);
+    try {
+      const rows = await fn.exportComments({ data: { studyId } });
+      const esc = (v: unknown) => { const t = String(v ?? ""); return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+      const head = ["Red", "Publicación", "Autor", "Comentario", "Fecha", "Likes", "Es respuesta", "ID comentario", "Enlace"];
+      const lines = rows.map((r) => [PLATFORMS[r.sources.platform as Platform]?.label ?? r.sources.platform, r.sources.url, (r.author ?? "").replace(/^@+/, ""), r.text, r.published_at ? new Date(r.published_at).toISOString().slice(0, 19).replace("T", " ") : "", r.likes, r.is_reply ? "Sí" : "No", r.external_id, r.url].map(esc).join(","));
+      const blob = new Blob(["\uFEFF" + [head.join(","), ...lines].join("\r\n")], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = `comentarios-${studyId.slice(0, 8)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (e) { setExportError(e instanceof Error ? e.message : "No se pudo descargar."); }
+    finally { setExporting(false); }
+  };
   return (
     <section className="mt-12">
-      <div className="flex flex-wrap items-center gap-2 border-b border-foreground pb-3">
-        <h2 className="mr-auto font-display text-3xl">Comentarios extraídos</h2>
-        <select value={sourceId ?? ""} onChange={(e) => setSourceId(e.target.value || null)} className="border border-border bg-background px-2 py-1 font-mono text-xs">
-          <option value="">Todas las fuentes</option>
-          {sources.filter((s) => s.comment_count).map((s) => <option key={s.id} value={s.id}>{PLATFORMS[s.platform as Platform].label} · {s.post_id}</option>)}
-        </select>
+      <div className="flex flex-wrap items-center gap-3 border-b border-foreground pb-3">
+        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="mr-auto flex items-center gap-3 text-left">
+          <span className={`font-mono text-lg transition-transform ${open ? "rotate-45" : ""}`}>+</span>
+          <h2 className="font-display text-3xl">Comentarios extraídos</h2>
+          <span className="font-mono text-xs text-muted-foreground">{total.toLocaleString("es-MX")}</span>
+        </button>
+        <button onClick={download} disabled={exporting} className="border border-foreground px-3 py-1.5 font-mono text-xs hover:bg-secondary disabled:opacity-50">{exporting ? "Preparando…" : "Descargar CSV / Excel"}</button>
       </div>
-      {isLoading ? <p className="py-6 font-mono text-sm text-muted-foreground">Cargando…</p> : (
+      {exportError && <p className="pt-2 text-xs text-destructive">{exportError}</p>}
+      {open && (
         <>
-          <p className="pt-3 font-mono text-xs text-muted-foreground">Mostrando {data?.rows.length ?? 0} de {data?.total ?? 0}, ordenados por likes</p>
-          <ul className="divide-y divide-border">
-            {data?.rows.map((c) => (
-              <li key={c.id} className={`flex gap-4 py-4 ${c.is_reply ? "pl-8" : ""}`}>
-                <PlatformMark platform={c.sources.platform as Platform} className="h-6 w-6 text-[9px]" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm"><span className="font-medium">@{(c.author ?? "anónimo").replace(/^@+/, "")}</span>
-                    {c.is_reply && <span className="ml-2 font-mono text-[10px] uppercase text-muted-foreground">respuesta</span>}
-                    <span className="ml-2 font-mono text-[11px] text-muted-foreground">{c.published_at ? new Date(c.published_at).toLocaleDateString("es-MX") : ""}</span></p>
-                  <p className="mt-1 whitespace-pre-line">{c.text}</p>
-                </div>
-                <div className="shrink-0 text-right font-mono text-xs">
-                  <p>♥ {c.likes.toLocaleString("es-MX")}</p>
-                  {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-accent">ver ↗</a>}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-wrap items-center gap-3 pt-3">
+            <p className="mr-auto font-mono text-xs text-muted-foreground">{data ? `${(page * COMMENTS_PAGE + 1).toLocaleString("es-MX")}–${Math.min((page + 1) * COMMENTS_PAGE, data.total).toLocaleString("es-MX")} de ${data.total.toLocaleString("es-MX")}, ordenados por likes` : ""}</p>
+            <select value={sourceId ?? ""} onChange={(e) => { setSourceId(e.target.value || null); setPage(0); }} className="border border-border bg-background px-2 py-1 font-mono text-xs">
+              <option value="">Todas las fuentes</option>
+              {sources.filter((s) => s.comment_count).map((s) => <option key={s.id} value={s.id}>{PLATFORMS[s.platform as Platform].label} · {s.post_id}</option>)}
+            </select>
+          </div>
+          {isLoading ? <p className="py-6 font-mono text-sm text-muted-foreground">Cargando…</p> : (
+            <ul className="divide-y divide-border">
+              {data?.rows.map((c) => (
+                <li key={c.id} className={`flex gap-4 py-4 ${c.is_reply ? "pl-8" : ""}`}>
+                  <PlatformMark platform={c.sources.platform as Platform} className="h-6 w-6 text-[9px]" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm"><span className="font-medium">@{(c.author ?? "anónimo").replace(/^@+/, "")}</span>
+                      {c.is_reply && <span className="ml-2 font-mono text-[10px] uppercase text-muted-foreground">respuesta</span>}
+                      <span className="ml-2 font-mono text-[11px] text-muted-foreground">{c.published_at ? new Date(c.published_at).toLocaleDateString("es-MX") : ""}</span></p>
+                    <p className="mt-1 whitespace-pre-line">{c.text}</p>
+                  </div>
+                  <div className="shrink-0 text-right font-mono text-xs">
+                    <p>♥ {c.likes.toLocaleString("es-MX")}</p>
+                    {c.url && <a href={c.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-accent">ver ↗</a>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex items-center justify-between border-t border-border pt-3 font-mono text-xs">
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="border border-border px-3 py-1.5 hover:border-foreground disabled:opacity-40">← Anterior</button>
+            <span>Página {page + 1} de {pages}</span>
+            <button onClick={() => setPage((p) => Math.min(pages - 1, p + 1))} disabled={page >= pages - 1} className="border border-border px-3 py-1.5 hover:border-foreground disabled:opacity-40">Siguiente →</button>
+          </div>
         </>
       )}
     </section>

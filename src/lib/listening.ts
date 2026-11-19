@@ -4,8 +4,9 @@ import * as fn from "./listening.functions";
 
 export const studiesQuery = () => queryOptions({ queryKey: ["studies"], queryFn: () => fn.listStudies() });
 export const studyQuery = (id: string) => queryOptions({ queryKey: ["study", id], queryFn: () => fn.getStudy({ data: { id } }) });
-export const commentsQuery = (studyId: string, sourceId: string | null) =>
-  queryOptions({ queryKey: ["comments", studyId, sourceId], queryFn: () => fn.listComments({ data: { studyId, sourceId, limit: 100 } }) });
+export const COMMENTS_PAGE = 25;
+export const commentsQuery = (studyId: string, sourceId: string | null, page = 0) =>
+  queryOptions({ queryKey: ["comments", studyId, sourceId, page], queryFn: () => fn.listComments({ data: { studyId, sourceId, limit: COMMENTS_PAGE, offset: page * COMMENTS_PAGE } }), placeholderData: (prev) => prev });
 
 export type StudyDetail = NonNullable<Awaited<ReturnType<typeof fn.getStudy>>>;
 export type SourceRow = StudyDetail["sources"][number];

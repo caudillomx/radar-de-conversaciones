@@ -138,15 +138,30 @@ export const syncExtraction = createServerFn({ method: "POST" })
   });
 
 export const listComments = createServerFn({ method: "GET" })
-  .inputValidator((d) => z.object({ studyId: z.string().uuid(), sourceId: z.string().uuid().nullable(), limit: z.number().int().max(500).default(100) }).parse(d))
+  .inputValidator((d) => z.object({ studyId: z.string().uuid(), sourceId: z.string().uuid().nullable(), limit: z.number().int().max(500).default(100), offset: z.number().int().min(0).default(0) }).parse(d))
   .handler(async ({ data }) => {
     const s = await db();
     let q = s.from("comments").select("id, source_id, author, text, published_at, likes, url, is_reply, sources!inner(study_id, platform)", { count: "exact" })
-      .eq("sources.study_id", data.studyId).order("likes", { ascending: false }).limit(data.limit);
+      .eq("sources.study_id", data.studyId).order("likes", { ascending: false }).order("id").range(data.offset, data.offset + data.limit - 1);
     if (data.sourceId) q = q.eq("source_id", data.sourceId);
     const r = await q;
     if (r.error) throw new Error(r.error.message);
     return { rows: r.data, total: r.count ?? 0 };
+  });
+
+export const exportComments = createServerFn({ method: "GET" })
+  .inputValidator((d) => z.object({ studyId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const s = await db();
+    const rows: { author: string | null; text: string; published_at: string | null; likes: number; url: string | null; is_reply: boolean; external_id: string | null; sources: { platform: string; url: string } }[] = [];
+    for (let from = 0; from < 50000; from += 1000) {
+      const r = await s.from("comments").select("author, text, published_at, likes, url, is_reply, external_id, sources!inner(study_id, platform, url)")
+        .eq("sources.study_id", data.studyId).order("likes", { ascending: false }).order("id").range(from, from + 999);
+      if (r.error) throw new Error(r.error.message);
+      rows.push(...(r.data as unknown as typeof rows));
+      if (r.data.length < 1000) break;
+    }
+    return rows;
   });
 
 /* ---------- AI analysis ---------- */
