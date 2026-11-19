@@ -16,37 +16,64 @@ export type Database = {
     Tables: {
       analyses: {
         Row: {
+          batch_attempts: Json
+          batches_done: number
+          batches_total: number
+          codebook: Json | null
           comment_count: number
           created_at: string
           error: string | null
           finished_at: string | null
           id: string
+          locked_until: string | null
           model: string | null
+          progress_at: string
           result: Json | null
+          sample: Json | null
+          stage: string
           status: string
           study_id: string
+          synthesis: Json | null
         }
         Insert: {
+          batch_attempts?: Json
+          batches_done?: number
+          batches_total?: number
+          codebook?: Json | null
           comment_count?: number
           created_at?: string
           error?: string | null
           finished_at?: string | null
           id?: string
+          locked_until?: string | null
           model?: string | null
+          progress_at?: string
           result?: Json | null
+          sample?: Json | null
+          stage?: string
           status?: string
           study_id: string
+          synthesis?: Json | null
         }
         Update: {
+          batch_attempts?: Json
+          batches_done?: number
+          batches_total?: number
+          codebook?: Json | null
           comment_count?: number
           created_at?: string
           error?: string | null
           finished_at?: string | null
           id?: string
+          locked_until?: string | null
           model?: string | null
+          progress_at?: string
           result?: Json | null
+          sample?: Json | null
+          stage?: string
           status?: string
           study_id?: string
+          synthesis?: Json | null
         }
         Relationships: [
           {
@@ -71,6 +98,7 @@ export type Database = {
           human_stance: string | null
           id: string
           language: string | null
+          narrative: string | null
           reviewed_at: string | null
           sentiment: string | null
           stance: string | null
@@ -87,6 +115,7 @@ export type Database = {
           human_stance?: string | null
           id?: string
           language?: string | null
+          narrative?: string | null
           reviewed_at?: string | null
           sentiment?: string | null
           stance?: string | null
@@ -103,6 +132,7 @@ export type Database = {
           human_stance?: string | null
           id?: string
           language?: string | null
+          narrative?: string | null
           reviewed_at?: string | null
           sentiment?: string | null
           stance?: string | null

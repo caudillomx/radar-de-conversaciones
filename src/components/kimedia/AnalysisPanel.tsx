@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { analysisQuery, fn, useListeningMutation } from "@/lib/listening";
 import { PLATFORMS, type Platform } from "@/lib/platforms";
 import { PlatformMark } from "./PlatformMark";
@@ -9,34 +9,39 @@ import { Link } from "@tanstack/react-router";
 import type { AnalysisResult as Result, Quote } from "@/lib/analysis-types";
 import { DistBars, NarrativeMap, PlatformSentiment, SentimentBar, StatTile, Timeline } from "./charts";
 import { Methodology } from "./Methodology";
-import { ANALYSIS_TIMEOUT_MS, ANALYSIS_EXPIRED_MESSAGE } from "@/lib/analysis-lifecycle";
-
-const STEPS = ["Leyendo comentarios", "Midiendo sentimiento", "Agrupando narrativas", "Infiriendo arquetipos", "Perfilando participantes", "Seleccionando citas"];
+import { stageLabel } from "@/lib/analysis-lifecycle";
+import { useServerFn } from "@tanstack/react-start";
 
 export function AnalysisPanel({ studyId, commentCount, quick }: { studyId: string; commentCount: number; quick: boolean }) {
   const qc = useQueryClient();
   const run = useListeningMutation(fn.analyzeStudy, studyId);
-  const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [now, setNow] = useState(Date.now());
-  const { data: analysis } = useQuery({ ...analysisQuery(studyId), refetchInterval: (q) => (run.isPending || q.state.data?.status === "procesando" ? 1000 : false) });
-  const attemptStart = startedAt ?? (analysis?.status === "procesando" ? Date.parse(analysis.created_at) : null);
-  const expired = attemptStart !== null && now - attemptStart >= ANALYSIS_TIMEOUT_MS && (run.isPending || analysis?.status === "procesando");
-  const busy = !expired && (run.isPending || analysis?.status === "procesando");
+  const advance = useServerFn(fn.advanceAnalysis);
+  const { data: analysis } = useQuery({ ...analysisQuery(studyId), refetchInterval: (q) => (q.state.data?.status === "procesando" ? 3000 : false) });
+  const processing = analysis?.status === "procesando" ? analysis.id : null;
+  const busy = run.isPending || !!processing;
+  // While the page is open, push the analysis forward one step at a time (sequential, never overlapping).
+  // Leaving is safe: progress is stored and resumes on return (and via the scheduled job).
   useEffect(() => {
-    if (!run.isPending && analysis?.status !== "procesando") return;
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
-  }, [run.isPending, analysis?.status]);
-  const [step, setStep] = useState(0);
-  useEffect(() => {
-    if (!busy) { setStep(0); return; }
-    const t = setInterval(() => setStep((s) => Math.min(s + 1, STEPS.length - 1)), 9000);
-    return () => clearInterval(t);
-  }, [busy]);
+    if (!processing) return;
+    let alive = true;
+    void (async () => {
+      while (alive) {
+        try { await advance({ data: { analysisId: processing } }); } catch { await new Promise((r) => setTimeout(r, 5000)); }
+        if (!alive) break;
+        const fresh = await qc.fetchQuery({ ...analysisQuery(studyId), staleTime: 0 });
+        if (fresh?.status !== "procesando") break;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    })();
+    return () => { alive = false; };
+  }, [processing, advance, qc, studyId]);
   useEffect(() => { if (run.isSuccess || run.isError) qc.invalidateQueries({ queryKey: ["analysis", studyId] }); }, [run.isSuccess, run.isError, qc, studyId]);
+  const stage = analysis?.stage ?? "muestreo";
+  const done = analysis?.batches_done ?? 0, total = analysis?.batches_total ?? 0;
+  const pctDone = stage === "muestreo" ? 3 : stage === "sintesis" ? 10 : stage === "clasificacion" ? 15 + (total ? (done / total) * 75 : 0) : 95;
 
   const r = analysis?.status === "completado" ? (analysis.result as unknown as Result) : null;
-  const err = expired ? ANALYSIS_EXPIRED_MESSAGE : run.error?.message ?? (analysis?.status === "error" ? analysis.error : null);
+  const err = run.error?.message ?? (analysis?.status === "error" ? analysis.error : null);
 
   return (
     <section className={`${quick ? "border-2 border-accent" : "border border-foreground"} bg-card p-6`}>
@@ -47,7 +52,7 @@ export function AnalysisPanel({ studyId, commentCount, quick }: { studyId: strin
         </div>
         <div className="flex flex-wrap gap-2">
         {r && !busy && <Button asChild variant="outline" className="rounded-none px-5 py-2.5"><Link to="/presentacion/$studyId" params={{ studyId }}>Descargar presentación (PDF)</Link></Button>}
-        <Button onClick={() => { run.reset(); setStartedAt(Date.now()); setNow(Date.now()); run.mutate({ studyId }); }} disabled={busy || commentCount < 5}
+        <Button onClick={() => { run.reset(); run.mutate({ studyId }); }} disabled={busy || commentCount < 5}
           className="rounded-none px-5 py-2.5 hover:bg-accent">
           {busy ? "Analizando…" : err ? "Reintentar análisis" : r ? "Volver a analizar" : "✦ Analizar con IA"}
         </Button>
@@ -56,9 +61,9 @@ export function AnalysisPanel({ studyId, commentCount, quick }: { studyId: strin
 
       {busy && (
         <div className="mt-6">
-          <div className="flex justify-between font-mono text-[11px] uppercase text-muted-foreground"><span>{STEPS[step]}…</span><span>{step + 1}/{STEPS.length}</span></div>
-          <div className="mt-1 h-2 w-full bg-secondary"><div className="h-full animate-pulse bg-accent transition-all duration-1000" style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} /></div>
-          <p className="mt-2 text-xs text-muted-foreground">Suele tardar entre 30 segundos y 2 minutos.</p>
+          <div className="flex justify-between font-mono text-[11px] uppercase text-muted-foreground"><span>{analysis?.status === "procesando" ? stageLabel(stage, done, total) : "Preparando la muestra…"}</span><span>{Math.round(pctDone)}%</span></div>
+          <div className="mt-1 h-2 w-full bg-secondary"><div className="h-full bg-accent transition-all duration-1000" style={{ width: `${pctDone}%` }} /></div>
+          <p className="mt-2 text-xs text-muted-foreground">Puedes salir de esta página y volver: el avance se conserva y continúa donde quedó.</p>
         </div>
       )}
       {err && !busy && <p className="mt-4 text-sm text-destructive">{err}</p>}
@@ -123,7 +128,7 @@ function Report({ r, quick }: { r: Result; quick: boolean }) {
               <summary className="flex cursor-pointer list-none items-center gap-4">
                 <span className="font-mono text-sm text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
                 <span className="flex-1 font-display text-2xl group-open:text-accent">{n.title}</span>
-                <span className="font-mono text-[11px] uppercase">tracción {n.traction} · {Math.round(n.share)}% · {n.sentiment}</span>
+                <span className="font-mono text-[11px] uppercase">{n.residual ? "categoría residual" : `tracción ${n.traction}`} · {n.share}%{n.moe != null ? ` ±${n.moe}` : ""}{n.count != null ? ` · ${n.count.toLocaleString("es-MX")} com.` : ""}{n.residual ? "" : ` · ${n.sentiment}`}</span>
                 <span className="font-mono text-lg transition-transform group-open:rotate-45">+</span>
               </summary>
               <div className="mt-3 pl-10">

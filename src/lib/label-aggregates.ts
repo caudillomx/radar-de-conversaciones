@@ -3,7 +3,7 @@ import type { Dist, StanceResult } from "./analysis-types";
 /** One persisted classification (shape of a comment_labels row plus the comment's platform). */
 export type Label = {
   sentiment: string | null; stance: string | null; account_type: string | null; language: string | null;
-  gender: string | null; age: string | null; country: string | null; platform: string;
+  gender: string | null; age: string | null; country: string | null; platform: string; narrative?: string | null;
 };
 
 const tally = <T,>(xs: T[], f: (x: T) => string) => xs.reduce<Record<string, number>>((m, x) => { const k = f(x); m[k] = (m[k] ?? 0) + 1; return m; }, {});
@@ -61,4 +61,15 @@ export function computeAggregates(labels: Label[], stanceTarget: string | null) 
     },
     stance: stanceTarget ? computeStance(labels, stanceTarget) : null,
   };
+}
+
+/** Real share of each codebook narrative (plus the residual "otra") over classified comments, with 95% MoE. */
+export function computeNarratives(labels: Label[], codebook: { id: string }[]) {
+  const n = labels.length;
+  const ids = new Set(codebook.map((c) => c.id));
+  const t = tally(labels, (l) => (l.narrative && ids.has(l.narrative) ? l.narrative : "otra"));
+  return [...codebook.map((c) => c.id), "otra"].map((id) => {
+    const p = n ? (t[id] ?? 0) / n : 0;
+    return { id, count: t[id] ?? 0, share: Math.round(p * 1000) / 10, moe: moe95(p, n) };
+  });
 }

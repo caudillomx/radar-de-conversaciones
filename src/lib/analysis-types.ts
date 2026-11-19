@@ -9,7 +9,7 @@ export type AnalysisResult = {
   headline: string; executive_summary: string; total_comments: number; analyzed_comments: number; classified_comments?: number;
   temperature: { score: number; label: string; summary: string };
   sentiment: { positive: number; neutral: number; negative: number };
-  narratives: { title: string; description: string; traction: "alta" | "media" | "baja"; share: number; sentiment: string; examples: Quote[] }[];
+  narratives: { id?: string; residual?: boolean; count?: number; moe?: number; title: string; description: string; traction: "alta" | "media" | "baja"; share: number; sentiment: string; examples: Quote[] }[];
   archetypes: { name: string; description: string; stance: string; tone: string; arguments: string[]; share: number; example: Quote | null }[];
   verbatims: (Quote & { why: string })[];
   keywords: { term: string; weight: number }[];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeAggregates, moe95, type Label } from "./label-aggregates";
+import { computeAggregates, computeNarratives, moe95, type Label } from "./label-aggregates";
 
 const L = (stance: string | null, platform = "x", sentiment = "neu"): Label => ({ sentiment, stance, account_type: "persona", language: "es", gender: "nd", age: "nd", country: "nd", platform });
 
@@ -23,5 +23,15 @@ describe("stance aggregates", () => {
   it("breaks stance down by platform", () => {
     const s = computeAggregates([L("favor", "x"), L("contra", "tiktok")], "obj").stance!;
     expect(s.by_platform.find((p) => p.platform === "tiktok")!.contra.share).toBe(100);
+  });
+});
+
+describe("narrative shares", () => {
+  it("counts real shares and folds unknown ids into the residual 'otra'", () => {
+    const mk = (narrative: string | null): Label => ({ ...L(null), narrative });
+    const r = computeNarratives([mk("n1"), mk("n1"), mk("n2"), mk("zzz")], [{ id: "n1" }, { id: "n2" }]);
+    expect(r.find((x) => x.id === "n1")!.share).toBe(50);
+    expect(r.find((x) => x.id === "otra")!.count).toBe(1);
+    expect(r.find((x) => x.id === "n1")!.moe).toBe(moe95(0.5, 4));
   });
 });

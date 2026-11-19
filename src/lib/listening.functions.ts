@@ -1,7 +1,6 @@
-import { computeAggregates } from "./label-aggregates";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { ANALYSIS_TIMEOUT_MS, ANALYSIS_EXPIRED_MESSAGE, isAnalysisExpired } from "./analysis-lifecycle";
+import { ANALYSIS_STALL_MS, ANALYSIS_STALLED_MESSAGE, CLASSIFY_BATCH, isAnalysisStalled } from "./analysis-lifecycle";
 
 const platform = z.enum(["instagram", "tiktok", "youtube", "facebook", "x"]);
 const chk = (r: { error: { message: string } | null }) => { if (r.error) throw new Error(r.error.message); };
@@ -172,141 +171,51 @@ export const exportComments = createServerFn({ method: "GET" })
 /* ---------- AI analysis ---------- */
 
 
+const ANALYSIS_COLS = "id, study_id, status, model, comment_count, result, error, created_at, finished_at, stage, batches_total, batches_done, progress_at";
 export const getLatestAnalysis = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ studyId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const s = await db();
-    const r = await s.from("analyses").select("*").eq("study_id", data.studyId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const r = await s.from("analyses").select(ANALYSIS_COLS).eq("study_id", data.studyId).order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (r.error) throw new Error(r.error.message);
-    if (r.data?.status === "procesando" && isAnalysisExpired(r.data.created_at)) {
-      const expired = await s.from("analyses").update({ status: "error", error: ANALYSIS_EXPIRED_MESSAGE, finished_at: new Date().toISOString() }).eq("id", r.data.id).eq("status", "procesando").select("*").maybeSingle();
+    if (r.data?.status === "procesando" && isAnalysisStalled(r.data.progress_at)) {
+      const expired = await s.from("analyses").update({ status: "error", error: ANALYSIS_STALLED_MESSAGE, finished_at: new Date().toISOString() }).eq("id", r.data.id).eq("status", "procesando").select(ANALYSIS_COLS).maybeSingle();
       if (expired.error) throw new Error(expired.error.message);
       if (expired.data) return expired.data;
-      return must(await s.from("analyses").select("*").eq("id", r.data.id).single());
+      return must(await s.from("analyses").select(ANALYSIS_COLS).eq("id", r.data.id).single());
     }
     return r.data;
   });
 
-type Row = { id: string; author: string | null; text: string; likes: number; is_reply: boolean; url: string | null; published_at: string | null; platform: string };
-
-/** Stratified by platform, keeping high-impact comments plus a random spread. */
-function stratified(rows: Row[], n: number) {
-  if (rows.length <= n) return rows;
-  const by = new Map<string, Row[]>();
-  rows.forEach((r) => by.set(r.platform, [...(by.get(r.platform) ?? []), r]));
-  const out: Row[] = [];
-  for (const group of by.values()) {
-    const quota = Math.max(1, Math.round((group.length / rows.length) * n));
-    const sorted = [...group].sort((a, b) => b.likes - a.likes);
-    const top = sorted.slice(0, Math.ceil(quota * 0.3));
-    const rest = sorted.slice(top.length).sort(() => Math.random() - 0.5).slice(0, quota - top.length);
-    out.push(...top, ...rest);
-  }
-  return out.slice(0, n);
-}
-const tally = <T,>(xs: T[], f: (x: T) => string) => xs.reduce<Record<string, number>>((m, x) => { const k = f(x); m[k] = (m[k] ?? 0) + 1; return m; }, {});
-const line = (c: Row, i: number) => `[${i}] (${c.platform}${c.is_reply ? ", respuesta" : ""}, ${c.likes} likes, autor: ${c.author ?? "?"}) ${c.text.replace(/\s+/g, " ").slice(0, 350)}`;
-
 export const CLASSIFY_MAX = 2000;
-const BATCH = 125;
-const SYNTH_MAX = 400;
 
+/** Creates the analysis with a reproducible sample and returns immediately; the processor does the rest. */
 export const analyzeStudy = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ studyId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
-    const { runSynthesis, classifyBatch, ANALYSIS_MODEL } = await import("./ai/analysis.server");
+    const { ANALYSIS_MODEL } = await import("./ai/analysis.server");
+    const { stratified } = await import("./analysis-processor.server");
     const s = await db();
-    const study = must(await s.from("studies").select("title, topic, kind, stance_target, sources(platform, url, max_comments, comment_count, started_at, finished_at)").eq("id", data.studyId).single());
-    chk(await s.from("analyses").update({ status: "error", error: ANALYSIS_EXPIRED_MESSAGE, finished_at: new Date().toISOString() }).eq("study_id", data.studyId).eq("status", "procesando").lte("created_at", new Date(Date.now() - ANALYSIS_TIMEOUT_MS).toISOString()));
+    chk(await s.from("analyses").update({ status: "error", error: ANALYSIS_STALLED_MESSAGE, finished_at: new Date().toISOString() }).eq("study_id", data.studyId).eq("status", "procesando").lt("progress_at", new Date(Date.now() - ANALYSIS_STALL_MS).toISOString()));
     const busy = await s.from("analyses").select("id").eq("study_id", data.studyId).eq("status", "procesando").limit(1);
     if (busy.error) throw new Error(busy.error.message);
     if (busy.data?.length) throw new Error("Ya hay un análisis en curso para este estudio.");
-
-    const all: Row[] = [];
+    const all: { id: string; likes: number; platform: string }[] = [];
     for (let from = 0; from < 20000; from += 1000) {
-      const r = await s.from("comments").select("id, author, text, likes, is_reply, url, published_at, sources!inner(study_id, platform)")
-        .eq("sources.study_id", data.studyId).order("likes", { ascending: false }).range(from, from + 999);
+      const r = await s.from("comments").select("id, likes, sources!inner(study_id, platform)").eq("sources.study_id", data.studyId).order("likes", { ascending: false }).order("id").range(from, from + 999);
       if (r.error) throw new Error(r.error.message);
-      all.push(...r.data.map(({ sources, ...c }) => ({ ...c, platform: sources.platform })));
+      all.push(...r.data.map((c) => ({ id: c.id, likes: c.likes, platform: c.sources.platform })));
       if (r.data.length < 1000) break;
     }
     if (all.length < 5) throw new Error("Se necesitan al menos 5 comentarios extraídos para analizar.");
+    const sample = stratified(all, CLASSIFY_MAX).map((c) => c.id);
+    return must(await s.from("analyses").insert({ study_id: data.studyId, model: ANALYSIS_MODEL, comment_count: sample.length, stage: "muestreo", sample, batches_total: Math.ceil(sample.length / CLASSIFY_BATCH) }).select("id").single());
+  });
 
-    const sample = stratified(all, CLASSIFY_MAX);
-    const synth = [...sample.slice().sort((a, b) => b.likes - a.likes).slice(0, 250)];
-    const synthSet = new Set(synth);
-    synth.push(...sample.filter((c) => !synthSet.has(c)).slice(0, SYNTH_MAX - synth.length));
-
-    const row = must(await s.from("analyses").insert({ study_id: data.studyId, model: ANALYSIS_MODEL, comment_count: sample.length }).select("id, created_at").single());
-    const expiryTimer = setTimeout(() => {
-      void s.from("analyses").update({ status: "error", error: ANALYSIS_EXPIRED_MESSAGE, finished_at: new Date().toISOString() }).eq("id", row.id).eq("status", "procesando").then(() => {}, () => {});
-    }, Math.max(0, ANALYSIS_TIMEOUT_MS - (Date.now() - Date.parse(row.created_at))));
-    try {
-      const batches: Row[][] = [];
-      for (let i = 0; i < sample.length; i += BATCH) batches.push(sample.slice(i, i + BATCH));
-      // Synthesis and all classification batches run in parallel to fit the time limit.
-      const [out, ...classified] = await Promise.all([
-        runSynthesis({ studyTitle: study.title, topic: study.topic, comments: synth.map(line).join("\n") }),
-        ...batches.map((b) => classifyBatch(b.map(line).join("\n"), study.stance_target)),
-      ]);
-      if (isAnalysisExpired(row.created_at)) throw new Error(ANALYSIS_EXPIRED_MESSAGE);
-      const labels = classified.flatMap((list, bi) => list.flatMap((c) => { const r = batches[bi]![c.i]; return r ? [{ ...c, r }] : []; }));
-      const stanceTarget = study.stance_target?.trim() || null;
-      const rows = labels.map((l) => ({ analysis_id: row.id, comment_id: l.r.id, sentiment: l.s, stance: stanceTarget ? l.st ?? null : null, account_type: l.t, language: l.l.toLowerCase(), gender: l.g, age: l.a, country: l.p }));
-      for (let i = 0; i < rows.length; i += 500) chk(await s.from("comment_labels").upsert(rows.slice(i, i + 500), { onConflict: "analysis_id,comment_id", ignoreDuplicates: true }));
-      const agg = computeAggregates(rows.map((x, i) => ({ ...x, platform: labels[i]!.r.platform })), stanceTarget);
-      const sentiment = agg.sentiment;
-      const days = tally(all.filter((c) => c.published_at), (c) => c.published_at!.slice(0, 10));
-      const likesSorted = all.map((c) => c.likes).sort((a, b) => b - a);
-      const likesTotal = likesSorted.reduce((a, b) => a + b, 0) || 1;
-      const top10 = likesSorted.slice(0, Math.max(1, Math.ceil(all.length * 0.1))).reduce((a, b) => a + b, 0);
-      const quote = (i: number | null) => {
-        const c = i != null ? synth[i] : undefined;
-        return c ? { text: c.text, author: c.author, likes: c.likes, platform: c.platform, url: c.url, is_reply: c.is_reply } : null;
-      };
-      const dates = all.flatMap((c) => (c.published_at ? [c.published_at] : [])).sort();
-      const result = {
-        ...out,
-        sentiment,
-        total_comments: all.length,
-        analyzed_comments: synth.length,
-        classified_comments: labels.length,
-        narratives: out.narratives.map((n) => ({ ...n, examples: n.example_ids.map(quote).filter(Boolean) })),
-        archetypes: out.archetypes.map((a) => ({ ...a, example: quote(a.example_id) })),
-        verbatims: out.verbatims.flatMap((v) => { const q = quote(v.id); return q ? [{ ...q, why: v.why }] : []; }).sort((a, b) => b.likes - a.likes),
-        stats: {
-          timeline: Object.entries(days).sort().map(([day, count]) => ({ day, count })),
-          by_platform: agg.by_platform,
-          likes_top10_share: Math.round((top10 / likesTotal) * 100),
-          reply_share: Math.round((all.filter((c) => c.is_reply).length / all.length) * 100),
-        },
-        demographics: agg.demographics,
-        stance: agg.stance,
-        methodology: {
-          generated_at: new Date().toISOString(),
-          sources: study.sources.map((x) => ({ platform: x.platform, url: x.url, target: x.max_comments, collected: x.comment_count, finished_at: x.finished_at })),
-          period: dates.length ? { from: dates[0], to: dates[dates.length - 1] } : null,
-          collected: all.length,
-          classified: labels.length,
-          classify_requested: sample.length,
-          synthesized: synth.length,
-          sampling: all.length > sample.length
-            ? `Muestra estratificada por plataforma de ${sample.length.toLocaleString("es-MX")} de ${all.length.toLocaleString("es-MX")} comentarios (30% de mayor interacción + 70% aleatorio en cada red).`
-            : `Censo: se clasificaron todos los comentarios recolectados (${all.length.toLocaleString("es-MX")}).`,
-          limitations: out.limitations,
-        },
-      };
-      const saved = await s.from("analyses").update({ status: "completado", result: result as never, finished_at: new Date().toISOString() }).eq("id", row.id).eq("status", "procesando").select("id").maybeSingle();
-      chk(saved);
-      if (!saved.data) throw new Error(ANALYSIS_EXPIRED_MESSAGE);
-      if (!study.topic && out.topic_label) await s.from("studies").update({ topic: out.topic_label.slice(0, 200) }).eq("id", data.studyId);
-      return { id: row.id };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Error desconocido";
-      console.error("analyzeStudy", e);
-      await s.from("analyses").update({ status: "error", error: msg, finished_at: new Date().toISOString() }).eq("id", row.id).eq("status", "procesando");
-      throw new Error(msg);
-    } finally {
-      clearTimeout(expiryTimer);
-    }
+/** Advances one analysis by one stage or block of batches (< 60 s). Called by the open page; the scheduled job covers the rest. */
+export const advanceAnalysis = createServerFn({ method: "POST" })
+  .inputValidator((d) => z.object({ analysisId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const { processAnalyses } = await import("./analysis-processor.server");
+    return processAnalyses(data.analysisId);
   });

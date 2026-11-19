@@ -10,3 +10,4 @@
 - [x] Metodología explícita en informe y página.
 - [x] Quitar hooks para redes.
 - [x] Presentación en el estilo del reporte visual de Wizr.
+- [x] Análisis en segundo plano por etapas (sin límite de 2 minutos).

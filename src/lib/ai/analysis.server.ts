@@ -33,6 +33,7 @@ export const classificationSchema = z.array(z.object({
   l: z.string(),
   p: z.string(),
   st: z.enum(["favor", "contra", "ambigua", "no_aplica"]).optional(),
+  n: z.string().optional(),
 }));
 export type Classification = z.infer<typeof classificationSchema>[number];
 
@@ -90,12 +91,17 @@ export function runSynthesis(input: { studyTitle: string; topic: string; comment
 }
 
 /** Classifies one batch; a failed batch returns [] so coverage is reported honestly. */
-const stancePrompt = (target: string) => `${CLASSIFY}
-ADEMÁS, agrega a cada objeto el campo st = postura del comentario frente a: «${target}».
+function classifyPrompt(stanceTarget: string | null, codebook: { id: string; title: string; description: string }[]) {
+  let p = CLASSIFY;
+  if (codebook.length) p += `\nADEMÁS, agrega n = id de la narrativa a la que pertenece el comentario según este libro de códigos, o "otra" si no encaja en ninguna:\n${codebook.map((c) => `- ${c.id}: ${c.title} — ${c.description}`).join("\n")}`;
+  if (stanceTarget) p += `\nADEMÁS, agrega st = postura del comentario frente a: «${stanceTarget}».
 Valores: favor / contra / ambigua / no_aplica. "no_aplica" = el comentario no se refiere a ese objeto.
-IMPORTANTE: la postura NO es el sentimiento. Un comentario puede tener tono negativo (insulta, se queja de otros) y estar A FAVOR del objeto; o tono positivo y estar EN CONTRA. Juzga solo la posición frente al objeto.
-Ejemplo de salida: [{"i":0,"s":"neg","g":"nd","a":"nd","t":"persona","l":"es","p":"nd","st":"favor"}]`;
+IMPORTANTE: la postura NO es el sentimiento. Un comentario puede tener tono negativo (insulta, se queja de otros) y estar A FAVOR del objeto; o tono positivo y estar EN CONTRA. Juzga solo la posición frente al objeto.`;
+  if (codebook.length || stanceTarget) p += `\nEjemplo de salida: [{"i":0,"s":"neg","g":"nd","a":"nd","t":"persona","l":"es","p":"nd"${codebook.length ? ',"n":"n1"' : ""}${stanceTarget ? ',"st":"favor"' : ""}}]`;
+  return p;
+}
 
-export async function classifyBatch(lines: string, stanceTarget?: string | null) {
-  try { return await json(stanceTarget ? stancePrompt(stanceTarget) : CLASSIFY, lines, classificationSchema); } catch (e) { console.error("classifyBatch", e); return []; }
+/** Classifies one batch; throws on failure so the caller can retry. */
+export function classifyBatch(lines: string, stanceTarget: string | null, codebook: { id: string; title: string; description: string }[]) {
+  return json(classifyPrompt(stanceTarget, codebook), lines, classificationSchema);
 }

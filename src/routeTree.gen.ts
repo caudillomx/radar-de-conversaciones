@@ -14,6 +14,7 @@ import { Route as MetodologiaRouteImport } from './routes/metodologia'
 import { Route as EstudiosIndexRouteImport } from './routes/estudios.index'
 import { Route as EstudiosStudyIdRouteImport } from './routes/estudios.$studyId'
 import { Route as PresentacionStudyIdRouteImport } from './routes/presentacion.$studyId'
+import { Route as ApiPublicJobsProcessAnalysesRouteImport } from './routes/api/public/jobs/process-analyses'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +41,12 @@ const PresentacionStudyIdRoute = PresentacionStudyIdRouteImport.update({
   path: '/presentacion/$studyId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicJobsProcessAnalysesRoute =
+  ApiPublicJobsProcessAnalysesRouteImport.update({
+    id: '/api/public/jobs/process-analyses',
+    path: '/api/public/jobs/process-analyses',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +54,7 @@ export interface FileRoutesByFullPath {
   '/estudios/$studyId': typeof EstudiosStudyIdRoute
   '/presentacion/$studyId': typeof PresentacionStudyIdRoute
   '/estudios/': typeof EstudiosIndexRoute
+  '/api/public/jobs/process-analyses': typeof ApiPublicJobsProcessAnalysesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +62,7 @@ export interface FileRoutesByTo {
   '/estudios/$studyId': typeof EstudiosStudyIdRoute
   '/presentacion/$studyId': typeof PresentacionStudyIdRoute
   '/estudios': typeof EstudiosIndexRoute
+  '/api/public/jobs/process-analyses': typeof ApiPublicJobsProcessAnalysesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,6 +71,7 @@ export interface FileRoutesById {
   '/estudios/$studyId': typeof EstudiosStudyIdRoute
   '/presentacion/$studyId': typeof PresentacionStudyIdRoute
   '/estudios/': typeof EstudiosIndexRoute
+  '/api/public/jobs/process-analyses': typeof ApiPublicJobsProcessAnalysesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -71,6 +81,7 @@ export interface FileRouteTypes {
     | '/estudios/$studyId'
     | '/presentacion/$studyId'
     | '/estudios/'
+    | '/api/public/jobs/process-analyses'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -78,6 +89,7 @@ export interface FileRouteTypes {
     | '/estudios/$studyId'
     | '/presentacion/$studyId'
     | '/estudios'
+    | '/api/public/jobs/process-analyses'
   id:
     | '__root__'
     | '/'
@@ -85,6 +97,7 @@ export interface FileRouteTypes {
     | '/estudios/$studyId'
     | '/presentacion/$studyId'
     | '/estudios/'
+    | '/api/public/jobs/process-analyses'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -93,6 +106,7 @@ export interface RootRouteChildren {
   EstudiosStudyIdRoute: typeof EstudiosStudyIdRoute
   PresentacionStudyIdRoute: typeof PresentacionStudyIdRoute
   EstudiosIndexRoute: typeof EstudiosIndexRoute
+  ApiPublicJobsProcessAnalysesRoute: typeof ApiPublicJobsProcessAnalysesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -132,6 +146,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PresentacionStudyIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/jobs/process-analyses': {
+      id: '/api/public/jobs/process-analyses'
+      path: '/api/public/jobs/process-analyses'
+      fullPath: '/api/public/jobs/process-analyses'
+      preLoaderRoute: typeof ApiPublicJobsProcessAnalysesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -141,6 +162,7 @@ const rootRouteChildren: RootRouteChildren = {
   EstudiosStudyIdRoute: EstudiosStudyIdRoute,
   PresentacionStudyIdRoute: PresentacionStudyIdRoute,
   EstudiosIndexRoute: EstudiosIndexRoute,
+  ApiPublicJobsProcessAnalysesRoute: ApiPublicJobsProcessAnalysesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
