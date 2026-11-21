@@ -33,6 +33,7 @@ use the editor.
 - Social URL detection/validation lives in `src/lib/platforms.ts` (tested); reuse it for any ingest path.
 - Data lives in Lovable Cloud (studies, sources, comments); all access goes through server functions in `src/lib/listening.functions.ts` using the admin client (no auth yet, tables have no anon/authenticated grants). Client hooks/query keys in `src/lib/listening.ts`.
 - Apify: one specialized Actor per platform in `src/lib/apify.server.ts` (gateway). Async extraction polls partial datasets, idempotently inserts new comments and persists actual counts before completion; sequential browser polls avoid overlapping requests. Progress uses configured comment targets, not completed-source counts, so partial collection is visible.
+- X extraction searches both Latest and Top indexes for the same conversation; deduplicate by external comment ID because both indexes overlap.
 - AI analysis is staged in the background: `analyzeStudy` only stores a reproducible sample; `src/lib/analysis-processor.server.ts` advances muestreo→sintesis(codebook)→clasificacion(batches, upsert labels, retries)→agregado under a DB lease, each call <60s, driven by the open page (`advanceAnalysis`) and a per-minute cron route. Narrative shares are real label counts with a residual "otra".
 - User-facing copy never names third-party tools or models (say "motor de extracción/análisis").
 - Presentation deck is `/presentacion/$studyId`: 1920x1080 slides scaled on screen, exported via browser print with `@page` size.

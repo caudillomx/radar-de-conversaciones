@@ -11,3 +11,4 @@
 - [x] Quitar hooks para redes.
 - [x] Presentación en el estilo del reporte visual de Wizr.
 - [x] Análisis en segundo plano por etapas (sin límite de 2 minutos).
+- [x] Ampliar la búsqueda de comentarios de X combinando recientes y destacados, y verificarla con las publicaciones reales (929 y 378 comentarios únicos).

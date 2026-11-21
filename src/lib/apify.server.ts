@@ -35,7 +35,9 @@ export function buildInput(p: Platform, url: string, postId: string | null, max:
     case "tiktok": return { postURLs: [url], commentsPerPost: max, maxRepliesPerComment: replies ? 10 : 0 };
     case "instagram": return { directUrls: [url], resultsLimit: max, includeNestedComments: replies };
     case "facebook": return { startUrls: [{ url }], resultsLimit: max, includeNestedComments: replies };
-    case "x": return { searchTerms: [`conversation_id:${postId}`], maxItems: max, sort: "Latest" };
+    // Search both indexes: Latest alone can exhaust after a few hundred replies.
+    // The actor may emit duplicates; syncExtraction deduplicates by external ID.
+    case "x": return { searchTerms: [`conversation_id:${postId}`], maxItems: max, sort: "Latest + Top" };
   }
 }
 
