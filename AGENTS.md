@@ -37,6 +37,7 @@ use the editor.
 - AI analysis is staged in the background: `analyzeStudy` only stores a reproducible sample; `src/lib/analysis-processor.server.ts` advances muestreo→sintesis(codebook)→clasificacion(batches, upsert labels, retries)→agregado under a DB lease, each call <60s, driven by the open page (`advanceAnalysis`) and a per-minute cron route. Narrative shares are real label counts with a residual "otra".
 - User-facing copy never names third-party tools or models (say "motor de extracción/análisis").
 - Presentation deck is `/presentacion/$studyId`: 1920x1080 slides scaled on screen, exported via browser print with `@page` size.
+- Presentation charts render without animation for reliable printing; source links use the analysis methodology snapshot, falling back to collected study sources for legacy reports.
 - Analysis lifecycle constants (10-min no-progress stall, 80% min coverage, batch size/concurrency) live in `src/lib/analysis-lifecycle.ts` (tested). Never abort upstream generation with a timer: it may still be billed.
 - Routes: `/` Quick Pulse bar + chooser, `/estudios` deep studies list, `/estudios/$studyId` detail for both kinds (Study.kind quick|deep, missing = deep). Global typography and palette live as tokens in styles.css, with remote fonts loaded from __root head links.
 - Per-comment labels persist in `comment_labels` (per analysis, human_* columns reserved for review); all label aggregates (sentiment, stance with 95% MoE, demographics) come from `src/lib/label-aggregates.ts` (tested) so they can be recomputed from stored labels.

@@ -4,6 +4,7 @@ import { analysisQuery, studyQuery } from "@/lib/listening";
 import { label, type AnalysisResult, type Dist } from "@/lib/analysis-types";
 import { PLATFORMS, type Platform } from "@/lib/platforms";
 import logo from "@/assets/wizr-logo.png.asset.json";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/presentacion/$studyId")({
   head: () => ({
@@ -23,9 +24,9 @@ const PRINT = `@page { size: 1920px 1080px; margin: 0 }
 @media print { .no-print { display: none !important } .deck { gap: 0 !important; padding: 0 !important } .slide-wrap { width: 1920px !important; height: 1080px !important; break-after: page; box-shadow: none !important; border-radius: 0 !important } .slide { transform: none !important } }
 .slide, .slide * { -webkit-print-color-adjust: exact; print-color-adjust: exact }
 .slide { font-family: Arial, "Helvetica Neue", Helvetica, "Liberation Sans", sans-serif }
-.slide h1, .slide h2, .slide h3 { font-family: inherit; letter-spacing: -0.03em }`;
+.slide h1, .slide h2, .slide h3 { font-family: inherit; letter-spacing: 0 }`;
 
-type Ctx = { r: AnalysisResult; topic: string; date: string; quick: boolean };
+type Ctx = { r: AnalysisResult; topic: string; date: string; quick: boolean; sources: { platform: string; url: string }[] };
 
 function Deck() {
   const { studyId } = Route.useParams();
@@ -33,19 +34,20 @@ function Deck() {
   const { data: analysis, isLoading } = useQuery(analysisQuery(studyId));
   const r = analysis?.status === "completado" ? (analysis.result as unknown as AnalysisResult) : null;
   if (isLoading) return <p className="p-10 font-mono text-sm">Cargando…</p>;
-  if (!r || !study) return <p className="p-10">No hay un análisis completado. <Link to="/estudios/$studyId" params={{ studyId }} className="underline">Volver</Link></p>;
+  if (!r || !study || !analysis) return <p className="p-10">No hay un análisis completado. <Link to="/estudios/$studyId" params={{ studyId }} className="underline">Volver</Link></p>;
   const m = r.methodology;
   const fmt = (d: string) => new Date(d).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
-  const date = m?.period ? `${fmt(m.period.from)} — ${fmt(m.period.to)}` : fmt(analysis!.created_at);
-  const ctx: Ctx = { r, topic: study.topic || r.topic_label || study.title, date, quick: study.kind === "quick" };
+  const date = m?.period ? `${fmt(m.period.from)} — ${fmt(m.period.to)}` : fmt(analysis.created_at);
+  const sources = m?.sources.length ? m.sources : study.sources.filter((source) => source.comment_count > 0);
+  const ctx: Ctx = { r, topic: study.topic || r.topic_label || study.title, date, quick: study.kind === "quick", sources };
   const slides = buildSlides(ctx);
   return (
     <div className="min-h-screen bg-muted">
       <style>{PRINT}</style>
-      <div className="no-print sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background px-6 py-3">
+      <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-6 py-3">
         <Link to="/estudios/$studyId" params={{ studyId }} className="font-mono text-xs uppercase hover:text-accent">← Volver al análisis</Link>
         <p className="font-mono text-xs text-muted-foreground">{slides.length} diapositivas · 16:9</p>
-        <button onClick={() => window.print()} className="bg-accent px-5 py-2 text-sm font-medium text-accent-foreground">Descargar PDF</button>
+        <Button onClick={() => window.print()} className="bg-accent px-5 py-2 text-sm font-medium text-accent-foreground">Descargar PDF</Button>
       </div>
       <div className="deck flex flex-col items-center gap-8 p-8">
         {slides.map((s, i) => (
@@ -61,7 +63,7 @@ function Deck() {
 function Scaled({ children }: { children: React.ReactNode }) {
   return (
     <div className="slide absolute left-0 top-0 origin-top-left bg-background text-foreground" style={{ width: 1920, height: 1080, transform: "scale(var(--s))" }}
-      ref={(el) => { if (!el) return; const fit = () => el.style.setProperty("--s", String(el.parentElement!.clientWidth / 1920)); fit(); new ResizeObserver(fit).observe(el.parentElement!); }}>
+      ref={(el) => { const parent = el?.parentElement; if (!el || !parent) return; const fit = () => el.style.setProperty("--s", String(parent.clientWidth / 1920)); fit(); const observer = new ResizeObserver(fit); observer.observe(parent); return () => observer.disconnect(); }}>
       {children}
     </div>
   );
@@ -111,7 +113,35 @@ function HBars({ data, max }: { data: { label: string; value: number; suffix?: s
 }
 const distRows = (d: Dist) => d.filter((x) => x.key !== "nd" && x.key !== "und" && x.share >= 1).map((x) => ({ label: label(x.key), value: Math.round(x.share), suffix: "%" }));
 
-function buildSlides({ r, topic, date, quick }: Ctx) {
+function InsightChart({ title, note, rows, percent = false }: { title: string; note: string; rows: { name: string; value: number; tone?: string }[]; percent?: boolean }) {
+  const max = Math.max(1, ...rows.map((row) => row.value));
+  return (
+    <Panel className="min-w-0 p-7">
+      <h3 className="text-[28px] font-bold">{title}</h3>
+      <p className="mt-1 text-base text-muted-foreground">{note}</p>
+      <ul className="mt-6 space-y-5">
+        {rows.map((row) => (
+          <li key={row.name}>
+            <div className="mb-2 flex items-start justify-between gap-5 text-xl"><span className="min-w-0 break-words font-bold leading-tight">{row.name}</span><span className="shrink-0 font-bold">{Math.round(row.value)}{percent ? "%" : ""}</span></div>
+            <div className="h-5 rounded-sm bg-background"><div className={`h-full rounded-sm ${row.tone ?? "bg-accent"}`} style={{ width: `${(row.value / max) * 100}%` }} /></div>
+          </li>
+        ))}
+      </ul>
+      {!rows.length && <p className="mt-6 text-lg text-muted-foreground">Sin datos disponibles.</p>}
+    </Panel>
+  );
+}
+
+function SourceLinks({ sources, offset = 0 }: { sources: Ctx["sources"]; offset?: number }) {
+  return <div className="grid grid-cols-2 gap-x-8 gap-y-4">{sources.map((source, i) => (
+    <div key={source.url} className="min-w-0 border-t border-border pt-3">
+      <p className="mb-1 text-sm font-bold uppercase text-muted-foreground">Publicación {offset + i + 1} · {PLATFORMS[source.platform as Platform]?.label ?? source.platform}</p>
+      <a href={source.url} target="_blank" rel="noreferrer" className="block break-all text-lg leading-snug text-primary underline underline-offset-4">{source.url}</a>
+    </div>
+  ))}</div>;
+}
+
+function buildSlides({ r, topic, date, quick, sources }: Ctx) {
   const S: { node: React.ReactNode; section?: string; bare?: boolean }[] = [];
   const n = r.classified_comments ?? r.analyzed_comments;
   const count = (p: number) => Math.round((p / 100) * n);
@@ -130,6 +160,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
         <div className="grid flex-1 grid-cols-[1fr_640px] gap-10">
           <div className="flex flex-col gap-6">
             <p className="text-2xl leading-snug text-muted-foreground">{r.executive_summary}</p>
+            {r.stance && <p className="text-lg leading-snug"><b>Postura frente a {r.stance.target}:</b> {Math.round(r.stance.contra.share)}% en contra · {Math.round(r.stance.favor.share)}% a favor · {Math.round(r.stance.ambigua.share)}% ambigua. Base: {r.stance.n_base.toLocaleString("es-MX")}; no aplica: {r.stance.no_aplica}%.</p>}
             <div className="mt-auto grid grid-cols-3 gap-4">
               {([["Comentarios", n.toLocaleString("es-MX")], ["Temperatura", `${Math.round(r.temperature.score)}°`], ["Narrativas", String(r.narratives.length)]] as const).map(([l, v]) => (
                 <div key={l} className="rounded-2xl border border-border bg-background px-6 py-5"><p className="text-sm font-bold uppercase tracking-[0.25em] text-muted-foreground">{l}</p><p className="mt-1 text-5xl font-bold">{v}</p></div>
@@ -155,29 +186,14 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
     const v = r.verbatims[0];
     S.push({ section: "Escucha rápida", node: (
       <Body>
-        <Head k="Qué se dice y quién lo dice" title="Narrativas, voces y cita clave" />
-        <div className="grid flex-1 grid-cols-2 gap-10">
-          <div className="space-y-3">
-            {r.narratives.slice(0, 4).map((x, i) => (
-              <div key={i} className="rounded-2xl border border-border bg-background px-6 py-4">
-                <div className="flex items-center gap-4"><span className="text-2xl font-bold text-primary">N{String(i + 1).padStart(2, "0")}</span><span className="flex-1 text-2xl font-bold leading-tight">{x.title}</span><span className="text-2xl font-bold">{Math.round(x.share)}%</span><Pill s={x.sentiment} /></div>
-                <div className="mt-3 h-2 rounded-full bg-secondary"><div className="h-full rounded-full bg-primary" style={{ width: `${x.share}%` }} /></div>
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-col gap-5">
-            <div className="grid grid-cols-3 gap-3">
-              {r.archetypes.slice(0, 3).map((a, i) => (
-                <Panel key={i} className="p-5"><p className="text-3xl font-bold text-primary">{Math.round(a.share)}%</p><p className="mt-1 text-xl font-bold leading-tight">{a.name}</p><p className="mt-2 text-base leading-snug text-muted-foreground">{a.stance}</p></Panel>
-              ))}
-            </div>
-            {v && (
-              <div className="mt-auto rounded-3xl bg-foreground p-8 text-background">
-                <p className="text-[28px] font-bold leading-snug">“{v.text.length > 220 ? v.text.slice(0, 220) + "…" : v.text}”</p>
-                <p className="mt-4 text-lg opacity-70">@{(v.author ?? "anónimo").replace(/^@+/, "")} · {PLATFORMS[v.platform as Platform]?.label} · ♥ {v.likes.toLocaleString("es-MX")}</p>
-              </div>
-            )}
-          </div>
+        <Head k="Qué se dice y quién lo dice" title="Las ideas que mueven la conversación" />
+        <div className="grid grid-cols-2 gap-8">
+          <InsightChart title="Narrativas dominantes" note="Porcentaje de comentarios clasificados · principales narrativas" percent rows={r.narratives.slice(0, 5).map((x) => ({ name: x.title, value: x.share, tone: SENT[x.sentiment]?.[0] ?? "bg-primary" }))} />
+          <InsightChart title="Conceptos más repetidos" note="Peso relativo del concepto · índice 0–100, no porcentaje de comentarios" rows={[...r.keywords].sort((a, b) => b.weight - a.weight).slice(0, 5).map((x) => ({ name: x.term, value: x.weight }))} />
+        </div>
+        <div className="grid grid-cols-2 items-start gap-8">
+          <p className="text-lg leading-snug text-muted-foreground"><b className="text-foreground">Voces principales: </b>{r.archetypes.slice(0, 3).map((a) => `${a.name} (${Math.round(a.share)}%)`).join(" · ")}</p>
+          {v && <blockquote className="border-l-4 border-accent pl-5 text-xl leading-snug">“{v.text.length > 180 ? v.text.slice(0, 180) + "…" : v.text}”<p className="mt-2 text-base text-muted-foreground">@{(v.author ?? "anónimo").replace(/^@+/, "")} · {PLATFORMS[v.platform as Platform]?.label} · ♥ {v.likes.toLocaleString("es-MX")}</p></blockquote>}
         </div>
       </Body>
     ) });
@@ -329,9 +345,10 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
   if (!quick) S.push({ section: "Términos", node: (
     <Body>
       <div><Head k={k("Términos destacados")} title="El vocabulario de la conversación" /><p className="mt-2 text-xl text-muted-foreground">Conceptos más repetidos, dimensionados por frecuencia relativa</p></div>
-      <Panel className="flex flex-1 flex-wrap content-center items-center justify-center gap-5 px-16">
-        {r.keywords.map((w) => <span key={w.term} className="rounded-full border-2 border-destructive/30 bg-background px-6 py-2 font-bold text-destructive" style={{ fontSize: 22 + (w.weight / 100) * 36, opacity: 0.55 + (w.weight / 100) * 0.45 }}>{w.term}</span>)}
-      </Panel>
+      <div className="grid grid-cols-2 gap-8">
+        <InsightChart title="Conceptos más repetidos" note="Peso relativo · índice 0–100, no porcentaje de comentarios" rows={[...r.keywords].sort((a, b) => b.weight - a.weight).slice(0, 7).map((w) => ({ name: w.term, value: w.weight }))} />
+        <Panel className="flex flex-wrap content-center items-center justify-center gap-5 px-10">{[...r.keywords].sort((a, b) => b.weight - a.weight).slice(0, 16).map((w) => <span key={w.term} className="break-words font-bold text-primary" style={{ fontSize: 22 + (w.weight / 100) * 36 }}>{w.term}</span>)}</Panel>
+      </div>
     </Body>
   ) });
 
@@ -405,7 +422,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
 
   // Stance (only when the study defines a target)
   const st = r.stance;
-  if (st) S.push({ section: "Postura", node: (
+  if (st && !quick) S.push({ section: "Postura", node: (
     <Body>
       <div><Head k={k("Postura")} title={`Postura frente a: ${st.target}`} /><p className="mt-2 text-xl text-muted-foreground">{st.no_aplica}% no se refiere al objeto · n base {st.n_base.toLocaleString("es-MX")} · margen de error al 95%</p></div>
       <div className="grid flex-1 grid-cols-2 gap-10">
@@ -435,7 +452,7 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
     <Body>
       <div><Head k={k("Metodología")} title="Cómo se construyó este reporte" /><p className="mt-2 text-xl text-muted-foreground">Ficha técnica para sostener y replicar los hallazgos</p></div>
       <div className="grid grid-cols-2 gap-5">
-        {([["Universo", `${m.collected.toLocaleString("es-MX")} comentarios públicos de ${m.sources.length} ${m.sources.length === 1 ? "publicación" : "publicaciones"} (${[...new Set(m.sources.map((x) => PLATFORMS[x.platform as Platform]?.label))].join(", ")}).`],
+        {([["Universo", `${m.collected.toLocaleString("es-MX")} comentarios públicos de ${sources.length} ${sources.length === 1 ? "publicación" : "publicaciones"} (${[...new Set(sources.map((x) => PLATFORMS[x.platform as Platform]?.label ?? x.platform))].join(", ")}).`],
           ["Muestreo", m.sampling],
           ["Codificación", `${m.classified.toLocaleString("es-MX")} comentarios clasificados uno a uno; ${m.synthesized} para síntesis netnográfica. Cada cita es trazable a su comentario original.`],
           ["Limitaciones", [...m.limitations.slice(0, 2), "El perfil demográfico es una inferencia probabilística."].join(" ")]] as const).map(([t, b], i) => (
@@ -445,8 +462,13 @@ function buildSlides({ r, topic, date, quick }: Ctx) {
           </div>
         ))}
       </div>
+      <div><h3 className="mb-3 text-xl font-bold">Publicaciones analizadas</h3><SourceLinks sources={sources.slice(0, 4)} /></div>
     </Body>
   ) });
+
+  for (let offset = 4; offset < sources.length; offset += 8) {
+    S.push({ section: "Fuentes", node: <Body><Head k={k("Fuentes")} title="Publicaciones analizadas" /><SourceLinks sources={sources.slice(offset, offset + 8)} offset={offset} /></Body> });
+  }
 
   // Closing
   if (!quick) S.push({ bare: true, node: (
