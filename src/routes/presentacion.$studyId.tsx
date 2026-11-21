@@ -5,6 +5,7 @@ import { label, type AnalysisResult, type Dist } from "@/lib/analysis-types";
 import { PLATFORMS, type Platform } from "@/lib/platforms";
 import logo from "@/assets/wizr-logo.png.asset.json";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
 
 export const Route = createFileRoute("/presentacion/$studyId")({
   head: () => ({
@@ -30,11 +31,31 @@ type Ctx = { r: AnalysisResult; topic: string; date: string; quick: boolean; sou
 
 function Deck() {
   const { studyId } = Route.useParams();
-  const { data: study } = useQuery(studyQuery(studyId));
-  const { data: analysis, isLoading } = useQuery(analysisQuery(studyId));
+  const { data: study, refetch: refreshStudy } = useQuery({ ...studyQuery(studyId), staleTime: 0, refetchOnMount: "always", refetchInterval: 5000 });
+  const { data: analysis, isLoading, refetch: refreshAnalysis } = useQuery({ ...analysisQuery(studyId), staleTime: 0, refetchOnMount: "always", refetchInterval: 5000 });
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const exportPdf = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const [freshStudy, freshAnalysis] = await Promise.all([refreshStudy({ throwOnError: true }), refreshAnalysis({ throwOnError: true })]);
+      if (!freshStudy.data || freshAnalysis.data?.status !== "completado") {
+        setExportError("El análisis actualizado aún no está listo. Vuelve al análisis para consultar su avance.");
+        return;
+      }
+      await document.fonts.ready;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      window.print();
+    } catch {
+      setExportError("No se pudo consultar la versión más reciente. Intenta descargar de nuevo.");
+    } finally {
+      setExporting(false);
+    }
+  };
   const r = analysis?.status === "completado" ? (analysis.result as unknown as AnalysisResult) : null;
   if (isLoading) return <p className="p-10 font-mono text-sm">Cargando…</p>;
-  if (!r || !study || !analysis) return <p className="p-10">No hay un análisis completado. <Link to="/estudios/$studyId" params={{ studyId }} className="underline">Volver</Link></p>;
+  if (!r || !study || !analysis) return <p className="p-10">{analysis?.status === "procesando" ? "El análisis actualizado está en proceso." : "No hay un análisis completado."} <Link to="/estudios/$studyId" params={{ studyId }} className="underline">Volver al análisis</Link></p>;
   const m = r.methodology;
   const fmt = (d: string) => new Date(d).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
   const date = m?.period ? `${fmt(m.period.from)} — ${fmt(m.period.to)}` : fmt(analysis.created_at);
@@ -47,7 +68,8 @@ function Deck() {
       <div className="no-print sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-6 py-3">
         <Link to="/estudios/$studyId" params={{ studyId }} className="font-mono text-xs uppercase hover:text-accent">← Volver al análisis</Link>
         <p className="font-mono text-xs text-muted-foreground">{slides.length} diapositivas · 16:9</p>
-        <Button onClick={() => window.print()} className="bg-accent px-5 py-2 text-sm font-medium text-accent-foreground">Descargar PDF</Button>
+        <Button onClick={() => void exportPdf()} disabled={exporting} className="bg-accent px-5 py-2 text-sm font-medium text-accent-foreground">{exporting ? "Actualizando…" : "Descargar PDF"}</Button>
+        {exportError && <p role="alert" className="w-full text-sm text-destructive">{exportError}</p>}
       </div>
       <div className="deck flex flex-col items-center gap-8 p-8">
         {slides.map((s, i) => (

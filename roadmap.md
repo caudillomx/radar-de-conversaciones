@@ -13,3 +13,4 @@
 - [x] Análisis en segundo plano por etapas (sin límite de 2 minutos).
 - [x] Ampliar la búsqueda de comentarios de X combinando recientes y destacados, y verificarla con las publicaciones reales (929 y 378 comentarios únicos).
 - [x] Enriquecer el PDF con gráficas de narrativas y conceptos, e incluir ligas a las publicaciones analizadas; verificar la exportación real (3 láminas 16:9, liga clicable, sin recortes).
+- [x] Actualizar la presentación abierta y consultar el análisis más reciente antes de descargar el PDF (verificado: 322 → 628 comentarios, dos ligas).
