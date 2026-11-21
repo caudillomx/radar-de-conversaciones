@@ -1,18 +1,19 @@
 import { supabaseAdmin as s } from "@/integrations/supabase/client.server";
 import { ANALYSIS_STALLED_MESSAGE, ANALYSIS_STALL_MS, BATCH_MAX_ATTEMPTS, CLASSIFY_BATCH, CLASSIFY_CONCURRENCY, meetsCoverage, MIN_COVERAGE } from "./analysis-lifecycle";
 import { computeAggregates, computeNarratives, type Label } from "./label-aggregates";
+import { synthesisSample } from "./synthesis-sample";
 
-type C = { id: string; author: string | null; text: string; likes: number; is_reply: boolean; url: string | null; published_at: string | null; platform: string };
+type C = { id: string; source_id: string; source_url: string; author: string | null; text: string; likes: number; is_reply: boolean; url: string | null; published_at: string | null; platform: string };
 type Code = { id: string; title: string; description: string };
 type Quote = { text: string; author: string | null; likes: number; platform: string; url: string | null; is_reply: boolean };
 
 const BUDGET_MS = 50_000; // each invocation finishes well under 60 s
 const LEASE_MS = 3 * 60_000; // longer than one model call so invocations never overlap
-const SYNTH_TOP = 250, SYNTH_MAX = 400;
+const SYNTH_MAX = 400;
 
 const chk = (r: { error: { message: string } | null }) => { if (r.error) throw new Error(r.error.message); };
 const tally = <T,>(xs: T[], f: (x: T) => string) => xs.reduce<Record<string, number>>((m, x) => { const k = f(x); m[k] = (m[k] ?? 0) + 1; return m; }, {});
-export const line = (c: C, i: number) => `[${i}] (${c.platform}${c.is_reply ? ", respuesta" : ""}, ${c.likes} likes, autor: ${c.author ?? "?"}) ${c.text.replace(/\s+/g, " ").slice(0, 350)}`;
+export const line = (c: C, i: number) => `[${i}] (publicación: ${c.source_id}, ${c.platform}${c.is_reply ? ", respuesta" : ""}, ${c.likes} likes, autor: ${c.author ?? "?"}) ${c.text.replace(/\s+/g, " ").slice(0, 350)}`;
 const quote = (c: C): Quote => ({ text: c.text, author: c.author, likes: c.likes, platform: c.platform, url: c.url, is_reply: c.is_reply });
 
 /** Stratified by platform: high-impact comments plus a random spread. */
@@ -34,9 +35,9 @@ export function stratified<T extends { platform: string; likes: number }>(rows: 
 async function loadComments(ids: string[]) {
   const out = new Map<string, C>();
   for (let i = 0; i < ids.length; i += 200) {
-    const r = await s.from("comments").select("id, author, text, likes, is_reply, url, published_at, sources!inner(platform)").in("id", ids.slice(i, i + 200));
+    const r = await s.from("comments").select("id, source_id, author, text, likes, is_reply, url, published_at, sources!inner(platform, url)").in("id", ids.slice(i, i + 200));
     if (r.error) throw new Error(r.error.message);
-    r.data.forEach(({ sources, ...c }) => out.set(c.id, { ...c, platform: sources.platform }));
+    r.data.forEach(({ sources, ...c }) => out.set(c.id, { ...c, platform: sources.platform, source_url: sources.url }));
   }
   return ids.flatMap((id) => (out.has(id) ? [out.get(id)!] : []));
 }
@@ -86,7 +87,7 @@ export async function processAnalyses(onlyId?: string) {
 async function step(a: A, started: number) {
   const { runSynthesis, classifyBatch } = await import("./ai/analysis.server");
   const sample = (a.sample as string[] | null) ?? [];
-  const study = (await s.from("studies").select("title, topic, stance_target, sources(platform, url, max_comments, comment_count, finished_at)").eq("id", a.study_id).single());
+  const study = (await s.from("studies").select("title, topic, kind, stance_target, sources(platform, url, max_comments, comment_count, finished_at)").eq("id", a.study_id).single());
   if (study.error) throw new Error(study.error.message);
   const stanceTarget = study.data.stance_target?.trim() || null;
 
@@ -97,10 +98,13 @@ async function step(a: A, started: number) {
 
   if (a.stage === "sintesis") {
     const comments = await loadComments(sample);
-    const top = [...comments].sort((x, y) => y.likes - x.likes).slice(0, SYNTH_TOP);
-    const set = new Set(top);
-    const synth = [...top, ...comments.filter((c) => !set.has(c)).slice(0, SYNTH_MAX - top.length)];
-    const out = await runSynthesis({ studyTitle: study.data.title, topic: study.data.topic, comments: synth.map(line).join("\n") });
+    const synth = synthesisSample(comments, SYNTH_MAX);
+    const sourceIds = [...new Set(synth.map((c) => c.source_id))];
+    const sources = sourceIds.map((id) => {
+      const c = synth.find((comment) => comment.source_id === id);
+      return `Publicación ${id}: ${c?.source_url ?? ""} · ${comments.filter((comment) => comment.source_id === id).length} comentarios en la muestra de clasificación; ${synth.filter((comment) => comment.source_id === id).length} en la síntesis`;
+    }).join("\n");
+    const out = await runSynthesis({ studyTitle: study.data.title, topic: study.data.topic, sources, comments: synth.map(line).join("\n") });
     const q = (i: number | null) => (i != null && synth[i] ? quote(synth[i]!) : null);
     const codebook: Code[] = out.narratives.map((n, i) => ({ id: `n${i + 1}`, title: n.title, description: n.description }));
     const synthesis = {
@@ -111,7 +115,7 @@ async function step(a: A, started: number) {
       verbatims: out.verbatims.flatMap((v) => { const c = q(v.id); return c ? [{ ...c, why: v.why }] : []; }).sort((x, y) => y.likes - x.likes),
     };
     chk(await touch(a.id, { stage: "clasificacion", codebook, synthesis }));
-    if (!study.data.topic && out.topic_label) await s.from("studies").update({ topic: out.topic_label.slice(0, 200) }).eq("id", a.study_id);
+    if ((study.data.kind === "quick" || !study.data.topic) && out.topic_label) await s.from("studies").update({ topic: out.topic_label.slice(0, 200) }).eq("id", a.study_id);
     return;
   }
 

@@ -40,6 +40,9 @@ export type Classification = z.infer<typeof classificationSchema>[number];
 const SYNTH = `Eres analista senior de social listening y netnografía de KiMedia Digital.
 Recibes una muestra de comentarios públicos, cada uno con id numérico, plataforma, likes y si es respuesta.
 Produce una síntesis en español, rigurosa y basada SOLO en los comentarios. No inventes datos ni citas.
+- Cada comentario identifica su publicación de origen. Usa el listado de fuentes para distinguir las conversaciones; no mezcles autores de las publicaciones con autores de los comentarios ni atribuyas todo al personaje de la primera fuente.
+- El título y tema previos son contexto provisional, no una conclusión que debas confirmar. Si se añadieron publicaciones, recalcula topic_label para todo el conjunto.
+- Si hay varias publicaciones, el resumen debe explicar sus coincidencias y diferencias y mencionar los actores de cada una cuando sean identificables en las fuentes y comentarios. No inventes diferencias si no hay evidencia. Los hallazgos comunes se expresan en plural; los específicos se atribuyen a su publicación.
 - topic_label: 3 a 7 palabras que nombren el tema de la conversación (ej. "Lanzamiento iPhone 17 en México").
 - temperature.score 0 (fría/apática) a 100 (muy caliente/polarizada).
 - narratives: 3 a 6 ejes temáticos dominantes por tracción; share = % aproximado de comentarios; example_ids = 2-4 ids reales.
@@ -86,8 +89,8 @@ async function json<T>(system: string, prompt: string, schema: z.ZodType<T>): Pr
   }
 }
 
-export function runSynthesis(input: { studyTitle: string; topic: string; comments: string }) {
-  return json(SYNTH, `Estudio: ${input.studyTitle}${input.topic ? `\nTema: ${input.topic}` : ""}\n\nComentarios:\n${input.comments}`, analysisSchema);
+export function runSynthesis(input: { studyTitle: string; topic: string; sources: string; comments: string }) {
+  return json(SYNTH, `Título previo (provisional): ${input.studyTitle}${input.topic ? `\nTema previo (provisional): ${input.topic}` : ""}\n\nPublicaciones incluidas:\n${input.sources}\n\nComentarios:\n${input.comments}`, analysisSchema);
 }
 
 /** Classifies one batch; a failed batch returns [] so coverage is reported honestly. */

@@ -60,7 +60,7 @@ function Deck() {
   const fmt = (d: string) => new Date(d).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
   const date = m?.period ? `${fmt(m.period.from)} — ${fmt(m.period.to)}` : fmt(analysis.created_at);
   const sources = m?.sources.length ? m.sources : study.sources.filter((source) => source.comment_count > 0);
-  const ctx: Ctx = { r, topic: study.topic || r.topic_label || study.title, date, quick: study.kind === "quick", sources };
+  const ctx: Ctx = { r, topic: study.kind === "quick" ? r.topic_label || study.topic || study.title : study.topic || r.topic_label || study.title, date, quick: study.kind === "quick", sources };
   const slides = buildSlides(ctx);
   return (
     <div className="min-h-screen bg-muted">

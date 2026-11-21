@@ -14,3 +14,4 @@
 - [x] Ampliar la búsqueda de comentarios de X combinando recientes y destacados, y verificarla con las publicaciones reales (929 y 378 comentarios únicos).
 - [x] Enriquecer el PDF con gráficas de narrativas y conceptos, e incluir ligas a las publicaciones analizadas; verificar la exportación real (3 láminas 16:9, liga clicable, sin recortes).
 - [x] Actualizar la presentación abierta y consultar el análisis más reciente antes de descargar el PDF (verificado: 322 → 628 comentarios, dos ligas).
+- [x] Corregir la síntesis multi-publicación y regenerar el pulso para reflejar a Gutiérrez Luna y Pedro Haces (628 clasificados, resumen diferenciado y PDF de tres láminas revisado sin recortes).
