@@ -214,6 +214,7 @@ export type Database = {
           comment_count: number
           created_at: string
           error: string | null
+          extra_pass: boolean
           finished_at: string | null
           id: string
           include_replies: boolean
@@ -231,6 +232,7 @@ export type Database = {
           comment_count?: number
           created_at?: string
           error?: string | null
+          extra_pass?: boolean
           finished_at?: string | null
           id?: string
           include_replies?: boolean
@@ -248,6 +250,7 @@ export type Database = {
           comment_count?: number
           created_at?: string
           error?: string | null
+          extra_pass?: boolean
           finished_at?: string | null
           id?: string
           include_replies?: boolean

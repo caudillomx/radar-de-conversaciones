@@ -1,0 +1,1 @@
+ALTER TABLE public.sources ADD COLUMN IF NOT EXISTS extra_pass boolean NOT NULL DEFAULT false;

@@ -56,6 +56,12 @@ export function xSearchTerms(postId: string): string[] {
   return terms;
 }
 
+/** Second pass: replies addressed to the most-replied commenters, which the
+ * plain conversation search tends to omit. */
+export function xThreadTerms(postId: string, authors: string[]): string[] {
+  return [...new Set(authors.filter((a) => /^\w{1,15}$/.test(a)))].map((a) => `conversation_id:${postId} to:${a}`);
+}
+
 type Run = { id: string; status: string; defaultDatasetId: string; statusMessage?: string };
 
 export async function startRun(p: Platform, input: unknown, max: number) {

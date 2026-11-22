@@ -29,6 +29,13 @@
       "when": 1795113527051,
       "tag": "0003_staged_analysis",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795360690608,
+      "tag": "0004_sources_extra_pass",
+      "breakpoints": true
     }
   ]
 }

@@ -83,7 +83,7 @@ export const startExtraction = createServerFn({ method: "POST" })
       if (src.status === "iniciando" || src.status === "extrayendo") { results.push({ id: src.id, ok: true }); continue; }
       try {
         if (src.platform === "x" && !src.post_id) throw new Error("No se pudo leer el ID del post de X");
-        await s.from("sources").update({ status: "iniciando", error: null, started_at: new Date().toISOString(), finished_at: null }).eq("id", src.id);
+        await s.from("sources").update({ status: "iniciando", extra_pass: false, error: null, started_at: new Date().toISOString(), finished_at: null }).eq("id", src.id);
         const run = await startRun(src.platform as never, buildInput(src.platform as never, src.url, src.post_id, src.max_comments, src.include_replies), src.max_comments);
         await s.from("sources").update({ status: "extrayendo", apify_run_id: run.id, apify_dataset_id: run.defaultDatasetId }).eq("id", src.id);
         results.push({ id: src.id, ok: true });
@@ -135,6 +135,25 @@ export const syncExtraction = createServerFn({ method: "POST" })
     if (active) {
       chk(await s.from("sources").update({ comment_count: count }).eq("id", src.id).eq("apify_run_id", run.id));
       return { status: "extrayendo", apifyStatus: run.status, ingested: fresh.length, collected: count, message: run.statusMessage ?? null };
+    }
+    // Quick Pulse on X: one extra pass into the threads with the most replies.
+    if (src.platform === "x" && !src.extra_pass && src.post_id && run.status === "SUCCEEDED") {
+      const study = await s.from("studies").select("kind").eq("id", src.study_id).single();
+      if (study.data?.kind === "quick") {
+        const top = await s.from("comments").select("author, raw").eq("source_id", src.id).limit(5000);
+        const authors = (top.data ?? [])
+          .map((c) => ({ a: (c.raw as any)?.author?.userName ?? c.author, n: Number((c.raw as any)?.replyCount ?? 0) }))
+          .filter((c) => c.n > 0 && typeof c.a === "string").sort((x, y) => y.n - x.n).slice(0, 25).map((c) => c.a as string);
+        const { xThreadTerms, startRun } = await import("./apify.server");
+        const terms = xThreadTerms(src.post_id, authors);
+        if (terms.length) {
+          try {
+            const next = await startRun("x", { searchTerms: terms, maxItems: src.max_comments, sort: "Latest + Top", includeSearchTerms: true, deliverMode: "perPost" }, src.max_comments);
+            chk(await s.from("sources").update({ extra_pass: true, comment_count: count, apify_run_id: next.id, apify_dataset_id: next.defaultDatasetId }).eq("id", src.id).eq("apify_run_id", run.id));
+            return { status: "extrayendo", apifyStatus: "RUNNING", ingested: fresh.length, collected: count, message: null };
+          } catch (e) { console.error("X thread pass failed", e); }
+        }
+      }
     }
     const fin = rows.length === 0 && items.length > 0 ? { status: "error", error: "La fuente devolvió datos, pero ninguno parece un comentario" } : { status: "extraida", error: null };
     chk(await s.from("sources").update({ ...fin, comment_count: count, finished_at: new Date().toISOString() }).eq("id", src.id).eq("apify_run_id", run.id));
