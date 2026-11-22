@@ -26,7 +26,7 @@ export const ACTORS: Record<Platform, string> = {
   tiktok: "clockworks~tiktok-comments-scraper",
   instagram: "apify~instagram-comment-scraper",
   facebook: "apify~facebook-comments-scraper",
-  x: "apidojo~tweet-scraper",
+  x: "apidojo~twitter-scraper-lite",
 };
 
 export function buildInput(p: Platform, url: string, postId: string | null, max: number, replies: boolean) {
@@ -37,8 +37,23 @@ export function buildInput(p: Platform, url: string, postId: string | null, max:
     case "facebook": return { startUrls: [{ url }], resultsLimit: max, includeNestedComments: replies };
     // Search both indexes: Latest alone can exhaust after a few hundred replies.
     // The actor may emit duplicates; syncExtraction deduplicates by external ID.
-    case "x": return { searchTerms: [`conversation_id:${postId}`], maxItems: max, sort: "Latest + Top" };
+    case "x": return { searchTerms: xSearchTerms(postId ?? ""), maxItems: max, sort: "Latest + Top", includeSearchTerms: true, deliverMode: "perPost" };
   }
+}
+
+/** X caps each search at a few hundred results; time slices from the post's
+ * snowflake timestamp recover many more replies (2h slices for 24h, 12h to 72h, then open). */
+export function xSearchTerms(postId: string): string[] {
+  const base = `conversation_id:${postId}`;
+  let start: number;
+  try { start = Math.floor((Number(BigInt(postId) >> 22n) + 1288834974657) / 1000); } catch { return [base]; }
+  if (!Number.isFinite(start) || start < 1.2e9) return [base];
+  const H = 3600, terms: string[] = [];
+  let t = start - H;
+  while (t < start + 24 * H) { terms.push(`${base} since_time:${t} until_time:${t + 2 * H}`); t += 2 * H; }
+  while (t < start + 72 * H) { terms.push(`${base} since_time:${t} until_time:${t + 12 * H}`); t += 12 * H; }
+  terms.push(`${base} since_time:${t}`);
+  return terms;
 }
 
 type Run = { id: string; status: string; defaultDatasetId: string; statusMessage?: string };
