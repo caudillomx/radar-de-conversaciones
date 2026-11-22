@@ -3,7 +3,7 @@ export const ANALYSIS_STALL_MS = 10 * 60_000;
 export const ANALYSIS_STALLED_MESSAGE = "El análisis no avanzó durante 10 minutos. Puedes reintentar el análisis.";
 /** Minimum share of the sample that must be classified for results to be reported. */
 export const MIN_COVERAGE = 0.8;
-export const CLASSIFY_BATCH = 250;
+export const CLASSIFY_BATCH = 100; // keeps each model call ~15–20 s so an invocation finishes before the request is cut
 export const CLASSIFY_CONCURRENCY = 3;
 export const BATCH_MAX_ATTEMPTS = 3; // first try + 2 retries
 

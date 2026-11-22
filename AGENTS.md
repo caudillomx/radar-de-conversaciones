@@ -42,7 +42,7 @@ use the editor.
 - Presentation charts render without animation for reliable printing; source links use the analysis methodology snapshot, falling back to collected study sources for legacy reports.
 - The presentation polls the latest analysis and refreshes it before printing, so an open deck cannot silently export a previously cached analysis.
 - Synthesis samples proportionally by publication and carries source IDs/URLs into the prompt to preserve attribution; Quick Pulse regenerates its inferred topic on each analysis rather than anchoring to its first publication.
-- Analysis lifecycle constants (10-min no-progress stall, 80% min coverage, batch size/concurrency) live in `src/lib/analysis-lifecycle.ts` (tested). Never abort upstream generation with a timer: it may still be billed.
+- Analysis lifecycle constants (10-min no-progress stall, 80% min coverage, batch size (small enough that one model call fits one invocation)/concurrency) live in `src/lib/analysis-lifecycle.ts` (tested). Never abort upstream generation with a timer: it may still be billed.
 - Routes: `/` Quick Pulse bar + chooser, `/estudios` deep studies list, `/estudios/$studyId` detail for both kinds (Study.kind quick|deep, missing = deep). Global typography and palette live as tokens in styles.css, with remote fonts loaded from __root head links.
 - Per-comment labels persist in `comment_labels` (per analysis, human_* columns reserved for review); all label aggregates (sentiment, stance with 95% MoE, demographics) come from `src/lib/label-aggregates.ts` (tested) so they can be recomputed from stored labels.
 <!-- AGENT-MEMORY:END -->
