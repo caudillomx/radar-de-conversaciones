@@ -15,6 +15,7 @@ import { Route as EstudiosIndexRouteImport } from './routes/estudios.index'
 import { Route as EstudiosStudyIdRouteImport } from './routes/estudios.$studyId'
 import { Route as PresentacionStudyIdRouteImport } from './routes/presentacion.$studyId'
 import { Route as ApiPublicJobsProcessAnalysesRouteImport } from './routes/api/public/jobs/process-analyses'
+import { Route as ApiPublicJobsXRechecksRouteImport } from './routes/api/public/jobs/x-rechecks'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -47,6 +48,11 @@ const ApiPublicJobsProcessAnalysesRoute =
     path: '/api/public/jobs/process-analyses',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicJobsXRechecksRoute = ApiPublicJobsXRechecksRouteImport.update({
+  id: '/api/public/jobs/x-rechecks',
+  path: '/api/public/jobs/x-rechecks',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -55,6 +61,7 @@ export interface FileRoutesByFullPath {
   '/presentacion/$studyId': typeof PresentacionStudyIdRoute
   '/estudios/': typeof EstudiosIndexRoute
   '/api/public/jobs/process-analyses': typeof ApiPublicJobsProcessAnalysesRoute
+  '/api/public/jobs/x-rechecks': typeof ApiPublicJobsXRechecksRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -63,6 +70,7 @@ export interface FileRoutesByTo {
   '/presentacion/$studyId': typeof PresentacionStudyIdRoute
   '/estudios': typeof EstudiosIndexRoute
   '/api/public/jobs/process-analyses': typeof ApiPublicJobsProcessAnalysesRoute
+  '/api/public/jobs/x-rechecks': typeof ApiPublicJobsXRechecksRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -72,6 +80,7 @@ export interface FileRoutesById {
   '/presentacion/$studyId': typeof PresentacionStudyIdRoute
   '/estudios/': typeof EstudiosIndexRoute
   '/api/public/jobs/process-analyses': typeof ApiPublicJobsProcessAnalysesRoute
+  '/api/public/jobs/x-rechecks': typeof ApiPublicJobsXRechecksRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -82,6 +91,7 @@ export interface FileRouteTypes {
     | '/presentacion/$studyId'
     | '/estudios/'
     | '/api/public/jobs/process-analyses'
+    | '/api/public/jobs/x-rechecks'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -90,6 +100,7 @@ export interface FileRouteTypes {
     | '/presentacion/$studyId'
     | '/estudios'
     | '/api/public/jobs/process-analyses'
+    | '/api/public/jobs/x-rechecks'
   id:
     | '__root__'
     | '/'
@@ -98,6 +109,7 @@ export interface FileRouteTypes {
     | '/presentacion/$studyId'
     | '/estudios/'
     | '/api/public/jobs/process-analyses'
+    | '/api/public/jobs/x-rechecks'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -107,6 +119,7 @@ export interface RootRouteChildren {
   PresentacionStudyIdRoute: typeof PresentacionStudyIdRoute
   EstudiosIndexRoute: typeof EstudiosIndexRoute
   ApiPublicJobsProcessAnalysesRoute: typeof ApiPublicJobsProcessAnalysesRoute
+  ApiPublicJobsXRechecksRoute: typeof ApiPublicJobsXRechecksRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -153,6 +166,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicJobsProcessAnalysesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/jobs/x-rechecks': {
+      id: '/api/public/jobs/x-rechecks'
+      path: '/api/public/jobs/x-rechecks'
+      fullPath: '/api/public/jobs/x-rechecks'
+      preLoaderRoute: typeof ApiPublicJobsXRechecksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -163,6 +183,7 @@ const rootRouteChildren: RootRouteChildren = {
   PresentacionStudyIdRoute: PresentacionStudyIdRoute,
   EstudiosIndexRoute: EstudiosIndexRoute,
   ApiPublicJobsProcessAnalysesRoute: ApiPublicJobsProcessAnalysesRoute,
+  ApiPublicJobsXRechecksRoute: ApiPublicJobsXRechecksRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

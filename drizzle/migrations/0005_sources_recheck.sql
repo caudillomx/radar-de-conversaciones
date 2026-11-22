@@ -1,0 +1,1 @@
+ALTER TABLE public.sources ADD COLUMN IF NOT EXISTS recheck_at timestamptz, ADD COLUMN IF NOT EXISTS rechecked boolean NOT NULL DEFAULT false;

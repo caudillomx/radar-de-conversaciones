@@ -83,7 +83,7 @@ export const startExtraction = createServerFn({ method: "POST" })
       if (src.status === "iniciando" || src.status === "extrayendo") { results.push({ id: src.id, ok: true }); continue; }
       try {
         if (src.platform === "x" && !src.post_id) throw new Error("No se pudo leer el ID del post de X");
-        await s.from("sources").update({ status: "iniciando", extra_pass: false, error: null, started_at: new Date().toISOString(), finished_at: null }).eq("id", src.id);
+        await s.from("sources").update({ status: "iniciando", extra_pass: false, rechecked: false, recheck_at: null, error: null, started_at: new Date().toISOString(), finished_at: null }).eq("id", src.id);
         const run = await startRun(src.platform as never, buildInput(src.platform as never, src.url, src.post_id, src.max_comments, src.include_replies), src.max_comments);
         await s.from("sources").update({ status: "extrayendo", apify_run_id: run.id, apify_dataset_id: run.defaultDatasetId }).eq("id", src.id);
         results.push({ id: src.id, ok: true });
@@ -99,7 +99,11 @@ export const startExtraction = createServerFn({ method: "POST" })
 /** Ingests available dataset snapshots while running, then finalizes on success. */
 export const syncExtraction = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ sourceId: z.string().uuid() }).parse(d))
-  .handler(async ({ data }) => {
+  .handler(async ({ data }) => syncSource(data.sourceId));
+
+/** Plain implementation shared by the page poll and the scheduled job. */
+export async function syncSource(sourceId: string) {
+    const data = { sourceId };
     const { getRun, getItems, normalize } = await import("./apify.server");
     const s = await db();
     const src = must(await s.from("sources").select("*").eq("id", data.sourceId).single());
@@ -156,9 +160,32 @@ export const syncExtraction = createServerFn({ method: "POST" })
       }
     }
     const fin = rows.length === 0 && items.length > 0 ? { status: "error", error: "La fuente devolvió datos, pero ninguno parece un comentario" } : { status: "extraida", error: null };
-    chk(await s.from("sources").update({ ...fin, comment_count: count, finished_at: new Date().toISOString() }).eq("id", src.id).eq("apify_run_id", run.id));
+    // X: schedule one later re-extraction; only new IDs get stored.
+    const recheck = src.platform === "x" && !src.rechecked && fin.status === "extraida" ? { recheck_at: new Date(Date.now() + X_RECHECK_HOURS * 3600_000).toISOString() } : {};
+    chk(await s.from("sources").update({ ...fin, ...recheck, comment_count: count, finished_at: new Date().toISOString() }).eq("id", src.id).eq("apify_run_id", run.id));
     return { status: fin.status, apifyStatus: run.status, ingested: rows.length };
-  });
+}
+
+export const X_RECHECK_HOURS = 4;
+
+/** Scheduled job: starts due X re-extractions and advances running ones. */
+export async function processRechecks() {
+  const { buildInput, startRun } = await import("./apify.server");
+  const s = await db();
+  const due = must(await s.from("sources").select("*").eq("platform", "x").eq("status", "extraida").eq("rechecked", false).lte("recheck_at", new Date().toISOString()).limit(10));
+  let started = 0;
+  for (const src of due) {
+    if (!src.post_id) continue;
+    try {
+      const run = await startRun("x", buildInput("x", src.url, src.post_id, src.max_comments, src.include_replies), src.max_comments);
+      chk(await s.from("sources").update({ status: "extrayendo", rechecked: true, extra_pass: true, apify_run_id: run.id, apify_dataset_id: run.defaultDatasetId, finished_at: null }).eq("id", src.id).eq("status", "extraida"));
+      started++;
+    } catch (e) { console.error("X recheck failed", src.id, e); }
+  }
+  const running = must(await s.from("sources").select("id").eq("rechecked", true).in("status", ["extrayendo", "iniciando"]).limit(20));
+  for (const r of running) { try { await syncSource(r.id); } catch (e) { console.error("recheck sync failed", r.id, e); } }
+  return { started, synced: running.length };
+}
 
 export const listComments = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ studyId: z.string().uuid(), sourceId: z.string().uuid().nullable(), limit: z.number().int().max(500).default(100), offset: z.number().int().min(0).default(0) }).parse(d))

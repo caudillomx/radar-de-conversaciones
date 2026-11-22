@@ -221,6 +221,8 @@ export type Database = {
           max_comments: number
           platform: string
           post_id: string | null
+          recheck_at: string | null
+          rechecked: boolean
           started_at: string | null
           status: string
           study_id: string
@@ -239,6 +241,8 @@ export type Database = {
           max_comments?: number
           platform: string
           post_id?: string | null
+          recheck_at?: string | null
+          rechecked?: boolean
           started_at?: string | null
           status?: string
           study_id: string
@@ -257,6 +261,8 @@ export type Database = {
           max_comments?: number
           platform?: string
           post_id?: string | null
+          recheck_at?: string | null
+          rechecked?: boolean
           started_at?: string | null
           status?: string
           study_id?: string
