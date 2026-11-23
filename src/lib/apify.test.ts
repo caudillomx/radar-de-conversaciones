@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInput, normalize, xSearchTerms } from "./apify.server";
+import { buildInput, normalize, xChargeCap, xSearchTerms } from "./apify.server";
 
 describe("expanded X extraction", () => {
   it("searches recent and top replies within the requested publication", () => {
@@ -24,5 +24,9 @@ describe("expanded X extraction", () => {
   });
   it("excludes the original publication from the comment sample", () => {
     expect(normalize("x", { id: "456", text: "Publicación" }, "456")).toBeNull();
+  });
+  it("sets a spend cap that covers all 39 searches for a 1,000-comment pulse", () => {
+    // 39 queries × 0.016 = 0.624 plus 1,050 items × 0.002 = 2.10, +20%
+    expect(xChargeCap(39, 1000)).toBe(3.27);
   });
 });

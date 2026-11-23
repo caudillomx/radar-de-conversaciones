@@ -69,10 +69,19 @@ export function xThreadTerms(postId: string, authors: string[]): string[] {
   return [...new Set(authors.filter((a) => /^\w{1,15}$/.test(a)))].map((a) => `conversation_id:${postId} to:${a}`);
 }
 
+/** Spend cap for an X run: every search query plus every possible item, with margin. */
+export function xChargeCap(terms: number, max: number): number {
+  return Math.ceil((terms * 0.016 + (max + 50) * 0.002) * 1.2 * 100) / 100;
+}
+
 type Run = { id: string; status: string; defaultDatasetId: string; statusMessage?: string };
 
 export async function startRun(p: Platform, input: unknown, max: number) {
-  const { data } = await call<{ data: Run }>(`/acts/${ACTORS[p]}/runs?maxItems=${max + 50}`, { method: "POST", body: JSON.stringify(input) });
+  // X bills per search query on top of items; the automatic spend cap (derived
+  // from maxItems) can stop a many-slice run early, so set one that covers it.
+  const terms = (input as { searchTerms?: unknown[] })?.searchTerms?.length ?? 0;
+  const cap = p === "x" ? `&maxTotalChargeUsd=${xChargeCap(terms, max)}` : "";
+  const { data } = await call<{ data: Run }>(`/acts/${ACTORS[p]}/runs?maxItems=${max + 50}${cap}`, { method: "POST", body: JSON.stringify(input) });
   return data;
 }
 export async function getRun(runId: string) {
