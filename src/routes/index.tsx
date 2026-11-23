@@ -24,7 +24,9 @@ export const Route = createFileRoute("/")({
 
 function Home() {
   const { data: all = [] } = useQuery(studiesQuery());
-  const pulses = all.filter((s) => s.kind === "quick").slice(0, 6);
+  const allPulses = all.filter((s) => s.kind === "quick");
+  const [showAll, setShowAll] = useState(false);
+  const pulses = showAll ? allPulses : allPulses.slice(0, 6);
   const deep = all.filter((s) => s.kind === "deep");
   const create = useListeningMutation(fn.createQuickPulse);
   const del = useListeningMutation(fn.deleteStudy);
@@ -81,7 +83,10 @@ function Home() {
 
         <div className="mt-12 grid gap-12 md:grid-cols-2">
           <section>
-            <h2 className="font-display text-3xl">Pulsos recientes</h2>
+            <div className="flex items-baseline justify-between gap-4">
+              <h2 className="font-display text-3xl">{showAll ? "Todos los pulsos" : "Pulsos recientes"}</h2>
+              {allPulses.length > 6 && <button onClick={() => setShowAll((v) => !v)} className="font-mono text-xs uppercase text-accent hover:underline">{showAll ? "Ver menos" : `Ver todos (${allPulses.length})`}</button>}
+            </div>
             {pulses.length === 0 ? (
               <p className="mt-4 text-muted-foreground">Tus escuchas rápidas aparecerán aquí.</p>
             ) : (
