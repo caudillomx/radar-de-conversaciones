@@ -42,17 +42,24 @@ export function buildInput(p: Platform, url: string, postId: string | null, max:
 }
 
 /** X caps each search at a few hundred results; time slices from the post's
- * snowflake timestamp recover many more replies (2h slices for 24h, 12h to 72h, then open). */
-export function xSearchTerms(postId: string): string[] {
+ * snowflake timestamp recover many more replies. Slices are finest when replies
+ * are densest: 15 min for the first 3h, 1h to 24h, 12h to 72h, then open.
+ * Slices starting in the future are skipped (they cost a query and return nothing). */
+export function xSearchTerms(postId: string, nowSec = Math.floor(Date.now() / 1000)): string[] {
   const base = `conversation_id:${postId}`;
   let start: number;
   try { start = Math.floor((Number(BigInt(postId) >> 22n) + 1288834974657) / 1000); } catch { return [base]; }
   if (!Number.isFinite(start) || start < 1.2e9) return [base];
-  const H = 3600, terms: string[] = [];
-  let t = start - H;
-  while (t < start + 24 * H) { terms.push(`${base} since_time:${t} until_time:${t + 2 * H}`); t += 2 * H; }
-  while (t < start + 72 * H) { terms.push(`${base} since_time:${t} until_time:${t + 12 * H}`); t += 12 * H; }
-  terms.push(`${base} since_time:${t}`);
+  const H = 3600, M = 60, terms: string[] = [];
+  const plan: [number, number][] = [[3 * H, 15 * M], [24 * H, H], [72 * H, 12 * H]];
+  let t = start - 15 * M;
+  for (const [until, step] of plan) {
+    while (t < start + until) {
+      if (t > nowSec) return terms.length ? terms : [base];
+      terms.push(`${base} since_time:${t} until_time:${t + step}`); t += step;
+    }
+  }
+  if (t <= nowSec) terms.push(`${base} since_time:${t}`);
   return terms;
 }
 

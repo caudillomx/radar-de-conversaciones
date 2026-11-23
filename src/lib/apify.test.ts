@@ -1,14 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { buildInput, normalize } from "./apify.server";
+import { buildInput, normalize, xSearchTerms } from "./apify.server";
 
 describe("expanded X extraction", () => {
   it("searches recent and top replies within the requested publication", () => {
     const input = buildInput("x", "https://x.com/alessandrardlv/status/2123888236414079215", "2123888236414079215", 5000, true) as { searchTerms: string[]; maxItems: number; sort: string };
     expect(input.maxItems).toBe(5000);
     expect(input.sort).toBe("Latest + Top");
-    // 13 two-hour slices + 4 twelve-hour slices + 1 open tail
-    expect(input.searchTerms).toHaveLength(18);
+    // 13 quarter-hour slices + 21 hourly + 4 twelve-hour + 1 open tail
+    expect(xSearchTerms("2123888236414079215", 4e9)).toHaveLength(39);
     expect(input.searchTerms.every((term) => term.startsWith("conversation_id:2123888236414079215 since_time:"))).toBe(true);
+  });
+  it("skips slices that have not happened yet for a young post", () => {
+    const start = Math.floor((Number(BigInt("2123888236414079215") >> 22n) + 1288834974657) / 1000);
+    const terms = xSearchTerms("2123888236414079215", start + 2 * 3600);
+    // from -15 min to +2h in 15-min steps
+    expect(terms).toHaveLength(10);
   });
   it("keeps the same external ID across both indexes for deduplication", () => {
     const recent = normalize("x", { id: "123", text: "Comentario" }, "456");
