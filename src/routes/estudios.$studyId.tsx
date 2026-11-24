@@ -205,6 +205,7 @@ function Shell({ children, mode }: { children: React.ReactNode; mode?: "quick" |
 function SourceCard({ s, studyId }: { s: SourceRow; studyId: string }) {
   const update = useListeningMutation(fn.updateSource, studyId);
   const remove = useListeningMutation(fn.removeSource, studyId);
+  const more = useListeningMutation(fn.startExtraction, studyId);
   const u = new URL(s.url);
   const platform = s.platform as Platform;
   const st = STATUS[s.status] ?? STATUS["pendiente"]!;
@@ -240,6 +241,9 @@ function SourceCard({ s, studyId }: { s: SourceRow; studyId: string }) {
             <div className="ml-auto flex gap-3 font-mono text-xs uppercase">
               {(s.status === "pendiente" || s.status === "lista") && (
                 <button onClick={() => update.mutate({ id: s.id, patch: { status: s.status === "lista" ? "pendiente" : "lista" } })} className="hover:text-accent">{s.status === "lista" ? "Desmarcar" : "Lista"}</button>
+              )}
+              {(s.status === "extraida" || s.status === "error") && (
+                <button disabled={more.isPending} onClick={() => more.mutate({ sourceIds: [s.id] })} className="text-accent hover:underline" title="Vuelve a buscar y suma solo comentarios nuevos, sin repetidos">Extraer más</button>
               )}
               <button onClick={() => remove.mutate({ id: s.id })} className="text-muted-foreground hover:text-destructive">Quitar</button>
             </div>
