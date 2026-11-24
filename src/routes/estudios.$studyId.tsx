@@ -7,7 +7,9 @@ import { PlatformMark } from "@/components/kimedia/PlatformMark";
 import { AnalysisPanel } from "@/components/kimedia/AnalysisPanel";
 import { PLATFORMS, parseSocialUrl, splitUrls, type Platform } from "@/lib/platforms";
 import { COMMENTS_PAGE, commentsQuery, fn, studyQuery, useListeningMutation, type SourceRow } from "@/lib/listening";
-import { extractionProgress } from "@/lib/extraction-progress";
+import { extractionProgress, extractionState } from "@/lib/extraction-progress";
+import { Button } from "@/components/ui/button";
+import { CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/estudios/$studyId")({
   head: () => ({
@@ -93,6 +95,7 @@ function StudyPage() {
   const ready = study.sources.filter((s) => s.status === "lista" || s.status === "error");
   const runningCount = study.sources.filter((s) => RUNNING.has(s.status)).length;
   const { collected: totalComments, target, percent: progress } = extractionProgress(study.sources);
+  const state = extractionState(study.sources);
 
   function commit() {
     const items = (quick ? newValid.slice(0, Math.max(0, 2 - study!.sources.length)) : newValid).map((p) => p.ok ? { url: p.url, platform: p.platform, postId: p.postId } : null!);
@@ -161,18 +164,23 @@ function StudyPage() {
         <aside className="h-fit border border-foreground p-6 lg:sticky lg:top-6">
           <h2 className="font-mono text-xs uppercase tracking-[0.2em]">{quick ? "Extracción exprés" : "02 — Extracción"}</h2>
           <div role="status" aria-live="polite" aria-atomic="true" className="mt-4">
+            <p className={`mb-4 flex items-center gap-2 text-sm font-medium ${state === "completed" ? "text-success" : state === "error" ? "text-destructive" : "text-muted-foreground"}`}>
+              {state === "completed" ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : state === "error" ? <AlertCircle className="h-5 w-5 shrink-0" /> : state === "running" ? <Loader2 className="h-5 w-5 shrink-0 motion-safe:animate-spin" /> : null}
+              {state === "completed" ? "Extracción terminada" : state === "error" ? "Extracción detenida · revisa las fuentes" : state === "running" ? "Extracción en curso" : "Fuentes pendientes de extracción"}
+            </p>
             <p className="font-display text-5xl tabular-nums">{totalComments.toLocaleString("es-MX")}</p>
-            <p className="mt-1 text-sm text-muted-foreground">de {target.toLocaleString("es-MX")} comentarios · {runningCount ? "recolectados hasta ahora" : "recolectados"}</p>
+            <p className="mt-1 text-sm text-muted-foreground">comentarios {runningCount ? "recolectados hasta ahora" : "recolectados"}</p>
+            <p className="mt-2 text-xs text-muted-foreground">Máximo solicitado: {target.toLocaleString("es-MX")} · {progress}% alcanzado</p>
           </div>
 
-          <div className="mt-6">
+          {runningCount > 0 && <div className="mt-6">
             <div className="flex justify-between font-mono text-[11px] uppercase text-muted-foreground">
-              <span>{runningCount ? `Extrayendo ${runningCount}…` : "Progreso"}</span><span>{progress}%</span>
+              <span>Extrayendo {runningCount}…</span><span>{progress}% del máximo</span>
             </div>
             <div role="progressbar" aria-label="Comentarios recolectados" aria-valuemin={0} aria-valuemax={target || 1} aria-valuenow={Math.min(totalComments, target)} className="mt-1 h-2 w-full bg-secondary">
               <div className={`h-full bg-accent transition-all ${runningCount ? "animate-pulse" : ""}`} style={{ width: `${progress}%` }} />
             </div>
-          </div>
+          </div>}
 
           <dl className="mt-6 space-y-2 border-t border-border pt-4 text-sm">
             {(["lista", "iniciando", "extrayendo", "extraida", "error"] as const).map((k) => {
@@ -185,13 +193,13 @@ function StudyPage() {
             <button onClick={() => study.sources.forEach((s) => s.status === "pendiente" && markReady.mutate({ id: s.id, patch: { status: "lista" } }))}
               className="mt-6 w-full border border-foreground px-4 py-2.5 text-sm hover:bg-secondary">Marcar todas como listas</button>
           )}
-          <button onClick={() => start.mutate({ sourceIds: ready.map((s) => s.id) })} disabled={!ready.length || start.isPending}
+          {(ready.length > 0 || runningCount > 0 || start.isPending) && <Button onClick={() => start.mutate({ sourceIds: ready.map((s) => s.id) })} disabled={!ready.length || start.isPending}
             className="mt-3 w-full bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-40">
             {start.isPending ? "Iniciando…" : runningCount ? "Extracción en curso…" : `Extraer comentarios${ready.length ? ` (${ready.length})` : ""}`}
-          </button>
+          </Button>}
           {start.error && <p className="mt-2 text-xs text-destructive">{start.error.message}</p>}
           {syncError && <p className="mt-2 text-xs text-destructive">{syncError} Recarga la página para volver a consultar el progreso.</p>}
-          <p className="mt-2 text-xs text-muted-foreground">Cada fuente usa un extractor especializado según su red. Las extracciones pueden tardar de 1 a 5 minutos.</p>
+          {runningCount > 0 && <p className="mt-2 text-xs text-muted-foreground">Las extracciones pueden tardar de 1 a 5 minutos.</p>}
         </aside>
       </div>
     </Shell>
