@@ -233,7 +233,8 @@ export const getLatestAnalysis = createServerFn({ method: "GET" })
     return r.data;
   });
 
-export const CLASSIFY_MAX = 2000;
+/** Comments classified per analysis: Quick Pulse stays fast, Deep Dive gets a larger sample. */
+export const CLASSIFY_MAX = { quick: 2000, deep: 5000 } as const;
 
 /** Creates the analysis with a reproducible sample and returns immediately; the processor does the rest. */
 export const analyzeStudy = createServerFn({ method: "POST" })
@@ -247,14 +248,15 @@ export const analyzeStudy = createServerFn({ method: "POST" })
     if (busy.error) throw new Error(busy.error.message);
     if (busy.data?.length) throw new Error("Ya hay un análisis en curso para este estudio.");
     const all: { id: string; likes: number; platform: string }[] = [];
-    for (let from = 0; from < 20000; from += 1000) {
+    for (let from = 0; from < 50000; from += 1000) {
       const r = await s.from("comments").select("id, likes, sources!inner(study_id, platform)").eq("sources.study_id", data.studyId).order("likes", { ascending: false }).order("id").range(from, from + 999);
       if (r.error) throw new Error(r.error.message);
       all.push(...r.data.map((c) => ({ id: c.id, likes: c.likes, platform: c.sources.platform })));
       if (r.data.length < 1000) break;
     }
+    const kind = (await s.from("studies").select("kind").eq("id", data.studyId).single()).data?.kind === "quick" ? "quick" : "deep";
     if (all.length < 5) throw new Error("Se necesitan al menos 5 comentarios extraídos para analizar.");
-    const sample = stratified(all, CLASSIFY_MAX).map((c) => c.id);
+    const sample = stratified(all, CLASSIFY_MAX[kind]).map((c) => c.id);
     return must(await s.from("analyses").insert({ study_id: data.studyId, model: ANALYSIS_MODEL, comment_count: sample.length, stage: "muestreo", sample, batches_total: Math.ceil(sample.length / CLASSIFY_BATCH) }).select("id").single());
   });
 
